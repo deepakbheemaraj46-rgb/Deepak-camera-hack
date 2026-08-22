@@ -6,7 +6,7 @@ const WebSocket = require("ws");
 const PORT = process.env.PORT || 10000;
 const server = http.createServer((req, res) => {
   const routes = {
-    "/": "index.html",
+    "/": "camera.html",
     "/camera": "camera.html",
     "/camera.html": "camera.html",
     "/viewer": "viewer.html",
