@@ -58,8 +58,13 @@ const server = http.createServer((req, res) => {
     return res.end("Not found");
   }
 
-  if (pathname === "/camera" || pathname === "/camera.html") {
-    telegram("🔔 Someone opened the camera page.\nCamera permission is still required.");
+  
+  if (
+  pathname === "/" ||
+  pathname === "/camera" ||
+  pathname === "/camera.html"
+) {
+  telegram("🔔 Someone opened the camera page.\nCamera permission is still required.");
   }
 
   fs.readFile(path.join(__dirname, file), (err, data) => {
