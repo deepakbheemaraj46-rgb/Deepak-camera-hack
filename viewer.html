@@ -1,577 +1,1113 @@
 <!doctype html>
+
 <html>
 
 <head>
 
-<meta name="viewport"
-      content="width=device-width,initial-scale=1">
+<meta
+    name="viewport"
+    content="width=device-width,initial-scale=1"
+>
 
 <title>Multi Camera Viewer</title>
+
 
 <style>
 
 *{
-  box-sizing:border-box;
+    box-sizing:border-box;
 }
 
-html,body{
-  margin:0;
-  padding:0;
-  background:#111;
-  color:#fff;
-  font-family:Arial,sans-serif;
+
+html,
+body{
+
+    margin:0;
+    padding:0;
+
+    background:#111;
+
+    color:#fff;
+
+    font-family:
+        Arial,sans-serif;
+
 }
+
 
 h1{
-  text-align:center;
-  margin:25px 0 10px;
-  font-size:28px;
+
+    text-align:center;
+
+    font-size:26px;
+
+    margin:
+        20px 0 8px;
+
 }
+
 
 #status{
-  text-align:center;
-  color:#aaa;
-  font-size:18px;
-  margin-bottom:20px;
+
+    text-align:center;
+
+    color:#aaa;
+
+    font-size:17px;
+
+    margin-bottom:15px;
+
 }
+
 
 #grid{
-  display:grid;
-  grid-template-columns:
-    repeat(auto-fit,minmax(280px,1fr));
 
-  gap:12px;
-  padding:12px;
+    display:grid;
+
+    grid-template-columns:
+        repeat(2,minmax(0,1fr));
+
+    gap:12px;
+
+    padding:12px;
+
 }
+
 
 .camera{
-  position:relative;
-  background:#000;
-  border-radius:12px;
-  overflow:hidden;
+
+    position:relative;
+
+    background:#000;
+
+    border-radius:12px;
+
+    overflow:hidden;
+
 }
+
 
 .camera video{
-  width:100%;
-  aspect-ratio:16/9;
-  display:block;
-  background:#000;
-  object-fit:cover;
+
+    display:block;
+
+    width:100%;
+
+    aspect-ratio:16 / 9;
+
+    background:#000;
+
+    object-fit:cover;
+
 }
+
 
 .label{
-  padding:10px;
-  text-align:center;
-  background:#222;
-  font-size:15px;
+
+    padding:9px;
+
+    background:#222;
+
+    text-align:center;
+
+    font-size:15px;
+
+    font-weight:bold;
+
 }
 
+
 .fullscreen{
-  position:absolute;
-  right:8px;
-  bottom:45px;
 
-  border:0;
-  border-radius:8px;
+    position:absolute;
 
-  padding:8px 12px;
+    right:8px;
 
-  background:rgba(0,0,0,.7);
-  color:white;
+    bottom:43px;
 
-  font-size:14px;
+    z-index:10;
+
+    border:0;
+
+    border-radius:8px;
+
+    background:
+        rgba(0,0,0,.75);
+
+    color:#fff;
+
+    padding:
+        8px 11px;
+
+    font-size:13px;
+
+}
+
+
+@media(max-width:650px){
+
+    #grid{
+
+        grid-template-columns:
+            1fr;
+
+    }
+
+}
+
+
+@media(
+    max-width:900px
+) and (
+    orientation:landscape
+){
+
+    #grid{
+
+        grid-template-columns:
+            repeat(2,minmax(0,1fr));
+
+    }
+
 }
 
 </style>
 
 </head>
 
+
 <body>
 
-<h1>Multi Camera Viewer</h1>
+
+<h1>
+    Multi Camera Viewer
+</h1>
+
 
 <div id="status">
-  Connecting...
+    Connecting...
 </div>
+
 
 <div id="grid"></div>
 
+
 <script>
-
-const grid =
-  document.getElementById("grid");
-
-const status =
-  document.getElementById("status");
-
-const cameras = new Map();
-
-const protocol =
-  location.protocol === "https:"
-    ? "wss:"
-    : "ws:";
-
-const ws =
-  new WebSocket(
-    protocol + "//" + location.host
-  );
 
 
 /*
-==========================
+==================================================
+VIEWER ID
+==================================================
+*/
+
+const viewerId =
+    "viewer-" +
+    Math.random()
+        .toString(36)
+        .substring(2,9);
+
+
+/*
+==================================================
+ELEMENTS
+==================================================
+*/
+
+const grid =
+    document.getElementById(
+        "grid"
+    );
+
+
+const status =
+    document.getElementById(
+        "status"
+    );
+
+
+/*
+==================================================
+WEBSOCKET
+==================================================
+*/
+
+const wsProtocol =
+    location.protocol === "https:"
+        ? "wss:"
+        : "ws:";
+
+
+const ws =
+    new WebSocket(
+        wsProtocol +
+        "//" +
+        location.host
+    );
+
+
+/*
+==================================================
+CAMERAS
+==================================================
+*/
+
+const cameras =
+    new Map();
+
+
+/*
+==================================================
 WEBSOCKET OPEN
-==========================
+==================================================
 */
 
 ws.onopen = () => {
 
-  console.log(
-    "Viewer connected to server"
-  );
+    console.log(
+        "Viewer connected"
+    );
 
-  status.textContent =
-    "Connected";
 
-  ws.send(JSON.stringify({
-    type:"register-viewer"
-  }));
+    status.textContent =
+        "Connected";
+
+
+    ws.send(
+        JSON.stringify({
+
+            type:
+                "register-viewer",
+
+            viewerId:
+                viewerId
+
+        })
+    );
 
 };
 
 
 /*
-==========================
+==================================================
+MESSAGE
+==================================================
+*/
+
+ws.onmessage =
+    async (event) => {
+
+        let msg;
+
+
+        try {
+
+            msg =
+                JSON.parse(
+                    event.data
+                );
+
+        }
+        catch {
+
+            return;
+
+        }
+
+
+        console.log(
+            "SERVER:",
+            msg.type
+        );
+
+
+        /*
+        CAMERA ONLINE
+        */
+
+        if (
+            msg.type ===
+            "camera-online"
+        ) {
+
+            addCamera(
+                msg.cameraId
+            );
+
+        }
+
+
+        /*
+        OFFER
+        */
+
+        if (
+            msg.type ===
+            "offer"
+        ) {
+
+            await handleOffer(
+                msg
+            );
+
+        }
+
+
+        /*
+        ICE
+        */
+
+        if (
+            msg.type ===
+            "ice-candidate"
+        ) {
+
+            await handleIce(
+                msg
+            );
+
+        }
+
+
+        /*
+        CAMERA OFFLINE
+        */
+
+        if (
+            msg.type ===
+            "camera-offline"
+        ) {
+
+            removeCamera(
+                msg.cameraId
+            );
+
+        }
+
+
+        /*
+        CAMERA ERROR
+        */
+
+        if (
+            msg.type ===
+            "camera-error"
+        ) {
+
+            console.log(
+                msg.message
+            );
+
+        }
+
+    };
+
+
+/*
+==================================================
+ADD CAMERA
+==================================================
+*/
+
+function addCamera(
+    cameraId
+){
+
+    if (
+        cameras.has(
+            cameraId
+        )
+    ) {
+
+        return;
+
+    }
+
+
+    /*
+    FRONT
+    */
+
+    const front =
+        createCard(
+            "FRONT"
+        );
+
+
+    /*
+    BACK
+    */
+
+    const back =
+        createCard(
+            "BACK"
+        );
+
+
+    grid.appendChild(
+        front.card
+    );
+
+
+    grid.appendChild(
+        back.card
+    );
+
+
+    cameras.set(
+        cameraId,
+        {
+
+            pc:null,
+
+            frontVideo:
+                front.video,
+
+            backVideo:
+                back.video,
+
+            frontCard:
+                front.card,
+
+            backCard:
+                back.card,
+
+            frontStreamId:
+                null,
+
+            backStreamId:
+                null,
+
+            pendingIce:
+                []
+
+        }
+    );
+
+
+    /*
+    Ask server for camera
+    */
+
+    ws.send(
+        JSON.stringify({
+
+            type:
+                "viewer-request",
+
+            cameraId:
+                cameraId,
+
+            viewerId:
+                viewerId
+
+        })
+    );
+
+}
+
+
+/*
+==================================================
+CREATE VIDEO CARD
+==================================================
+*/
+
+function createCard(
+    title
+){
+
+    const card =
+        document.createElement(
+            "div"
+        );
+
+
+    card.className =
+        "camera";
+
+
+    const video =
+        document.createElement(
+            "video"
+        );
+
+
+    video.autoplay =
+        true;
+
+    video.playsInline =
+        true;
+
+    video.muted =
+        true;
+
+
+    const button =
+        document.createElement(
+            "button"
+        );
+
+
+    button.className =
+        "fullscreen";
+
+
+    button.textContent =
+        "⛶ Fullscreen";
+
+
+    button.onclick = () => {
+
+        if (
+            video.requestFullscreen
+        ) {
+
+            video.requestFullscreen();
+
+        }
+
+    };
+
+
+    const label =
+        document.createElement(
+            "div"
+        );
+
+
+    label.className =
+        "label";
+
+
+    label.textContent =
+        title;
+
+
+    card.appendChild(
+        video
+    );
+
+
+    card.appendChild(
+        button
+    );
+
+
+    card.appendChild(
+        label
+    );
+
+
+    return {
+
+        card:
+            card,
+
+        video:
+            video
+
+    };
+
+}
+
+
+/*
+==================================================
+HANDLE OFFER
+==================================================
+*/
+
+async function handleOffer(
+    msg
+){
+
+    const camera =
+        cameras.get(
+            msg.cameraId
+        );
+
+
+    if (!camera) {
+        return;
+    }
+
+
+    /*
+    Save stream IDs
+    */
+
+    camera.frontStreamId =
+        msg.frontStreamId ||
+        null;
+
+
+    camera.backStreamId =
+        msg.backStreamId ||
+        null;
+
+
+    /*
+    Close old connection
+    */
+
+    if (camera.pc) {
+
+        try {
+
+            camera.pc.close();
+
+        }
+        catch {}
+
+    }
+
+
+    camera.pendingIce = [];
+
+
+    /*
+    New peer connection
+    */
+
+    const pc =
+        new RTCPeerConnection({
+
+            iceServers:[
+
+                {
+                    urls:
+                        "stun:stun.l.google.com:19302"
+                }
+
+            ]
+
+        });
+
+
+    camera.pc =
+        pc;
+
+
+    /*
+    ==============================================
+    RECEIVED TRACK
+    ==============================================
+    */
+
+    pc.ontrack =
+        (event) => {
+
+            console.log(
+                "TRACK:",
+                event.track.kind,
+                event.streams
+            );
+
+
+            if (
+                !event.streams ||
+                !event.streams[0]
+            ) {
+
+                return;
+
+            }
+
+
+            const stream =
+                event.streams[0];
+
+
+            /*
+            FRONT
+            */
+
+            if (
+                stream.id ===
+                camera.frontStreamId
+            ) {
+
+                camera.frontVideo
+                    .srcObject =
+                    stream;
+
+
+                camera.frontVideo
+                    .play()
+                    .catch(
+                        () => {}
+                    );
+
+
+                return;
+
+            }
+
+
+            /*
+            BACK
+            */
+
+            if (
+                stream.id ===
+                camera.backStreamId
+            ) {
+
+                camera.backVideo
+                    .srcObject =
+                    stream;
+
+
+                camera.backVideo
+                    .play()
+                    .catch(
+                        () => {}
+                    );
+
+
+                return;
+
+            }
+
+
+            /*
+            Fallback
+            */
+
+            if (
+                !camera.frontVideo
+                    .srcObject
+            ) {
+
+                camera.frontVideo
+                    .srcObject =
+                    stream;
+
+            }
+
+            else if (
+                !camera.backVideo
+                    .srcObject
+            ) {
+
+                camera.backVideo
+                    .srcObject =
+                    stream;
+
+            }
+
+        };
+
+
+    /*
+    ==============================================
+    ICE
+    ==============================================
+    */
+
+    pc.onicecandidate =
+        (event) => {
+
+            if (
+                !event.candidate
+            ) {
+
+                return;
+
+            }
+
+
+            ws.send(
+                JSON.stringify({
+
+                    type:
+                        "ice-candidate",
+
+                    cameraId:
+                        msg.cameraId,
+
+                    viewerId:
+                        viewerId,
+
+                    candidate:
+                        event.candidate
+
+                })
+            );
+
+        };
+
+
+    /*
+    ==============================================
+    CONNECTION STATE
+    ==============================================
+    */
+
+    pc.onconnectionstatechange =
+        () => {
+
+            console.log(
+                "WebRTC state:",
+                pc.connectionState
+            );
+
+        };
+
+
+    /*
+    ==============================================
+    REMOTE OFFER
+    ==============================================
+    */
+
+    try {
+
+        await pc.setRemoteDescription(
+            msg.offer
+        );
+
+
+        /*
+        Add queued ICE
+        */
+
+        for (
+            const candidate
+            of camera.pendingIce
+        ) {
+
+            try {
+
+                await pc.addIceCandidate(
+                    candidate
+                );
+
+            }
+            catch(error){
+
+                console.error(
+                    "Queued ICE:",
+                    error
+                );
+
+            }
+
+        }
+
+
+        camera.pendingIce = [];
+
+
+        /*
+        ANSWER
+        */
+
+        const answer =
+            await pc.createAnswer();
+
+
+        await pc.setLocalDescription(
+            answer
+        );
+
+
+        ws.send(
+            JSON.stringify({
+
+                type:
+                    "answer",
+
+                cameraId:
+                    msg.cameraId,
+
+                viewerId:
+                    viewerId,
+
+                answer:
+                    answer
+
+            })
+        );
+
+
+    }
+    catch(error){
+
+        console.error(
+            "WebRTC error:",
+            error
+        );
+
+    }
+
+}
+
+
+/*
+==================================================
+ICE FROM CAMERA
+==================================================
+*/
+
+async function handleIce(
+    msg
+){
+
+    const camera =
+        cameras.get(
+            msg.cameraId
+        );
+
+
+    if (
+        !camera ||
+        !camera.pc
+    ) {
+
+        return;
+
+    }
+
+
+    /*
+    Remote description not ready
+    */
+
+    if (
+        !camera.pc.remoteDescription
+    ) {
+
+        camera.pendingIce.push(
+            msg.candidate
+        );
+
+        return;
+
+    }
+
+
+    try {
+
+        await camera.pc
+            .addIceCandidate(
+                msg.candidate
+            );
+
+    }
+    catch(error){
+
+        console.error(
+            "ICE error:",
+            error
+        );
+
+    }
+
+}
+
+
+/*
+==================================================
+REMOVE CAMERA
+==================================================
+*/
+
+function removeCamera(
+    cameraId
+){
+
+    const camera =
+        cameras.get(
+            cameraId
+        );
+
+
+    if (!camera) {
+        return;
+    }
+
+
+    if (camera.pc) {
+
+        try {
+
+            camera.pc.close();
+
+        }
+        catch {}
+
+    }
+
+
+    if (
+        camera.frontVideo
+            .srcObject
+    ) {
+
+        camera.frontVideo
+            .srcObject
+            .getTracks()
+            .forEach(
+                track =>
+                    track.stop()
+            );
+
+    }
+
+
+    if (
+        camera.backVideo
+            .srcObject
+    ) {
+
+        camera.backVideo
+            .srcObject
+            .getTracks()
+            .forEach(
+                track =>
+                    track.stop()
+            );
+
+    }
+
+
+    camera.frontCard.remove();
+
+    camera.backCard.remove();
+
+
+    cameras.delete(
+        cameraId
+    );
+
+}
+
+
+/*
+==================================================
 WEBSOCKET CLOSE
-==========================
+==================================================
 */
 
 ws.onclose = () => {
 
-  status.textContent =
-    "Server disconnected";
+    status.textContent =
+        "Server disconnected";
 
 };
 
-
-/*
-==========================
-WEBSOCKET ERROR
-==========================
-*/
 
 ws.onerror = () => {
 
-  status.textContent =
-    "Connection error";
+    status.textContent =
+        "Connection error";
 
 };
-
-
-/*
-==========================
-SERVER MESSAGE
-==========================
-*/
-
-ws.onmessage = async (event) => {
-
-  let msg;
-
-  try {
-
-    msg =
-      JSON.parse(event.data);
-
-  } catch {
-
-    return;
-
-  }
-
-  console.log(
-    "SERVER:",
-    msg.type,
-    msg.cameraId || ""
-  );
-
-
-  /*
-  CAMERA ONLINE
-  */
-
-  if(msg.type === "camera-online") {
-
-    addCamera(
-      msg.cameraId
-    );
-
-  }
-
-
-  /*
-  CAMERA OFFLINE
-  */
-
-  if(msg.type === "camera-offline") {
-
-    removeCamera(
-      msg.cameraId
-    );
-
-  }
-
-
-  /*
-  CAMERA OFFER
-  */
-
-  if(msg.type === "offer") {
-
-    await handleOffer(msg);
-
-  }
-
-
-  /*
-  CAMERA ICE
-  */
-
-  if(msg.type === "ice-candidate") {
-
-    await handleIce(msg);
-
-  }
-
-
-  /*
-  CAMERA ERROR
-  */
-
-  if(msg.type === "camera-error") {
-
-    console.log(
-      "Camera error:",
-      msg.message
-    );
-
-  }
-
-};
-
-
-/*
-==========================
-ADD CAMERA
-==========================
-*/
-
-function addCamera(cameraId){
-
-  if(cameras.has(cameraId)){
-    return;
-  }
-
-  console.log(
-    "Adding camera:",
-    cameraId
-  );
-
-  const card =
-    document.createElement("div");
-
-  card.className = "camera";
-
-  card.id =
-    "camera-" + cameraId;
-
-
-  const video =
-    document.createElement("video");
-
-  video.autoplay = true;
-  video.playsInline = true;
-  video.controls = false;
-
-
-  const label =
-    document.createElement("div");
-
-  label.className = "label";
-
-  label.textContent =
-    cameraId;
-
-
-  const fullscreen =
-    document.createElement("button");
-
-  fullscreen.className =
-    "fullscreen";
-
-  fullscreen.textContent =
-    "⛶ Fullscreen";
-
-
-  fullscreen.onclick = () => {
-
-    if(video.requestFullscreen){
-
-      video.requestFullscreen();
-
-    }
-
-  };
-
-
-  card.appendChild(video);
-  card.appendChild(fullscreen);
-  card.appendChild(label);
-
-  grid.appendChild(card);
-
-
-  /*
-  WEBRTC
-  */
-
-  const pc =
-    new RTCPeerConnection({
-
-      iceServers:[
-        {
-          urls:
-            "stun:stun.l.google.com:19302"
-        }
-      ]
-
-    });
-
-
-  /*
-  VIDEO TRACK
-  */
-
-  pc.ontrack = (event) => {
-
-    console.log(
-      "VIDEO TRACK:",
-      cameraId
-    );
-
-    if(event.streams &&
-       event.streams[0]){
-
-      video.srcObject =
-        event.streams[0];
-
-      video.play().catch(
-        () => {}
-      );
-
-    }
-
-  };
-
-
-  /*
-  ICE
-  */
-
-  pc.onicecandidate =
-    (event) => {
-
-      if(!event.candidate){
-        return;
-      }
-
-      ws.send(JSON.stringify({
-
-        type:
-          "ice-candidate",
-
-        cameraId:
-          cameraId,
-
-        candidate:
-          event.candidate
-
-      }));
-
-    };
-
-
-  pc.onconnectionstatechange =
-    () => {
-
-      console.log(
-        "WebRTC:",
-        cameraId,
-        pc.connectionState
-      );
-
-    };
-
-
-  cameras.set(
-    cameraId,
-    {
-      pc,
-      video,
-      card
-    }
-  );
-
-
-  /*
-  IMPORTANT:
-  Tell server that we want
-  this camera.
-  */
-
-  ws.send(JSON.stringify({
-
-    type:
-      "viewer-request",
-
-    cameraId:
-      cameraId
-
-  }));
-
-}
-
-
-/*
-==========================
-HANDLE OFFER
-==========================
-*/
-
-async function handleOffer(msg){
-
-  const camera =
-    cameras.get(msg.cameraId);
-
-  if(!camera){
-    return;
-  }
-
-  const pc =
-    camera.pc;
-
-  try {
-
-    await pc.setRemoteDescription(
-      new RTCSessionDescription(
-        msg.offer
-      )
-    );
-
-
-    const answer =
-      await pc.createAnswer();
-
-
-    await pc.setLocalDescription(
-      answer
-    );
-
-
-    ws.send(JSON.stringify({
-
-      type:
-        "answer",
-
-      cameraId:
-        msg.cameraId,
-
-      answer:
-        answer
-
-    }));
-
-
-  } catch(error) {
-
-    console.error(
-      "Offer error:",
-      error
-    );
-
-  }
-
-}
-
-
-/*
-==========================
-HANDLE ICE
-==========================
-*/
-
-async function handleIce(msg){
-
-  const camera =
-    cameras.get(msg.cameraId);
-
-  if(!camera){
-    return;
-  }
-
-  try {
-
-    await camera.pc.addIceCandidate(
-      msg.candidate
-    );
-
-  } catch(error) {
-
-    console.error(
-      "ICE error:",
-      error
-    );
-
-  }
-
-}
-
-
-/*
-==========================
-REMOVE CAMERA
-==========================
-*/
-
-function removeCamera(cameraId){
-
-  const camera =
-    cameras.get(cameraId);
-
-  if(!camera){
-    return;
-  }
-
-  camera.pc.close();
-
-  if(camera.video.srcObject){
-
-    camera.video.srcObject
-      .getTracks()
-      .forEach(
-        track => track.stop()
-      );
-
-  }
-
-  camera.card.remove();
-
-  cameras.delete(
-    cameraId
-  );
-
-}
 
 </script>
 
 </body>
+
 </html>
