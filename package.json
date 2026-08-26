@@ -1,6 +1,7 @@
 {
-  "name": "remote-camera",
+  "name": "x-video",
   "version": "1.0.0",
+  "description": "Simple WebRTC camera viewer",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
