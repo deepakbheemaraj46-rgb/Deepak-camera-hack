@@ -2,20 +2,99 @@
 <html>
 <head>
 <meta name="viewport" content="width=device-width,initial-scale=1">
+
 <title>Multi Camera Viewer</title>
+
 <style>
-body{margin:0;background:#111;color:#fff;font-family:Arial;text-align:center}
-h1{font-size:25px}
-#status{font-size:17px;margin:15px}
-#grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px;padding:12px}
-.card{background:#222;border-radius:10px;padding:8px}
-.card video{width:100%;background:#000;border-radius:8px}
-.label{font-size:14px;padding:6px;color:#ddd}
+body {
+  margin: 0;
+  background: #111;
+  color: #fff;
+  font-family: Arial;
+  text-align: center;
+}
+
+h1 {
+  font-size: 25px;
+}
+
+#status {
+  font-size: 17px;
+  margin: 15px;
+}
+
+#grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 12px;
+  padding: 12px;
+}
+
+.card {
+  background: #222;
+  border-radius: 10px;
+  padding: 8px;
+}
+
+.label {
+  font-size: 14px;
+  padding: 6px;
+  color: #ddd;
+}
+
+.video-wrap {
+  position: relative;
+  width: 100%;
+}
+
+.video-wrap video {
+  width: 100%;
+  display: block;
+  background: #000;
+  border-radius: 8px;
+}
+
+.fullscreen-btn {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  width: 42px;
+  height: 42px;
+  border: none;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.7);
+  color: white;
+  font-size: 24px;
+  cursor: pointer;
+  z-index: 10;
+}
+
+.fullscreen-btn:active {
+  transform: scale(0.92);
+}
+
+video:fullscreen {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  background: black;
+}
+
+video:-webkit-full-screen {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  background: black;
+}
 </style>
 </head>
+
 <body>
+
 <h1>👁️ Live Camera Viewer</h1>
+
 <div id="status">Connecting...</div>
+
 <div id="grid"></div>
 
 <script>
@@ -31,6 +110,7 @@ const peers = new Map();
 const pendingCandidates = new Map();
 const cards = new Map();
 
+
 function addCamera(cameraId) {
   if (cards.has(cameraId)) return;
 
@@ -42,30 +122,68 @@ function addCamera(cameraId) {
   label.className = "label";
   label.textContent = "Camera " + cameraId;
 
+  const videoWrap = document.createElement("div");
+  videoWrap.className = "video-wrap";
+
   const video = document.createElement("video");
   video.autoplay = true;
   video.playsInline = true;
   video.muted = true;
 
+  const fullscreenBtn = document.createElement("button");
+  fullscreenBtn.className = "fullscreen-btn";
+  fullscreenBtn.innerHTML = "⛶";
+  fullscreenBtn.title = "Full screen";
+
+  fullscreenBtn.addEventListener("click", () => {
+    if (document.fullscreenElement) {
+      document.exitFullscreen();
+      return;
+    }
+
+    if (video.requestFullscreen) {
+      video.requestFullscreen();
+    } else if (video.webkitRequestFullscreen) {
+      video.webkitRequestFullscreen();
+    } else if (video.webkitEnterFullscreen) {
+      video.webkitEnterFullscreen();
+    }
+  });
+
+  videoWrap.appendChild(video);
+  videoWrap.appendChild(fullscreenBtn);
+
   card.appendChild(label);
-  card.appendChild(video);
+  card.appendChild(videoWrap);
+
   grid.appendChild(card);
 
-  cards.set(cameraId, { card, video });
+  cards.set(cameraId, {
+    card,
+    video
+  });
 }
+
 
 function removeCamera(cameraId) {
   const pc = peers.get(cameraId);
-  if (pc) pc.close();
+
+  if (pc) {
+    pc.close();
+  }
 
   peers.delete(cameraId);
   pendingCandidates.delete(cameraId);
 
   const item = cards.get(cameraId);
-  if (item) item.card.remove();
+
+  if (item) {
+    item.card.remove();
+  }
 
   cards.delete(cameraId);
 }
+
 
 function startPeer(cameraId) {
   if (peers.has(cameraId)) return;
@@ -73,7 +191,11 @@ function startPeer(cameraId) {
   addCamera(cameraId);
 
   const pc = new RTCPeerConnection({
-    iceServers: [{ urls: "stun:stun.l.google.com:19302" }]
+    iceServers: [
+      {
+        urls: "stun:stun.l.google.com:19302"
+      }
+    ]
   });
 
   peers.set(cameraId, pc);
@@ -91,8 +213,10 @@ function startPeer(cameraId) {
 
   pc.ontrack = e => {
     const item = cards.get(cameraId);
+
     if (item) {
       item.video.srcObject = e.streams[0];
+
       item.video.play().catch(() => {});
     }
   };
@@ -102,6 +226,7 @@ function startPeer(cameraId) {
     cameraId
   }));
 }
+
 
 ws.onmessage = async e => {
   const m = JSON.parse(e.data);
@@ -116,11 +241,13 @@ ws.onmessage = async e => {
 
   if (m.type === "camera-online") {
     startPeer(m.cameraId);
+
     status.textContent = "🟢 Camera connected";
   }
 
   if (m.type === "camera-live") {
     addCamera(m.cameraId);
+
     status.textContent = "🟢 Camera is LIVE";
   }
 
@@ -140,15 +267,20 @@ ws.onmessage = async e => {
     }
 
     const pc = peers.get(cameraId);
+
     await pc.setRemoteDescription(m.offer);
 
-    const queued = pendingCandidates.get(cameraId) || [];
+    const queued =
+      pendingCandidates.get(cameraId) || [];
+
     for (const c of queued) {
       await pc.addIceCandidate(c).catch(() => {});
     }
+
     pendingCandidates.set(cameraId, []);
 
     const answer = await pc.createAnswer();
+
     await pc.setLocalDescription(answer);
 
     ws.send(JSON.stringify({
@@ -160,24 +292,33 @@ ws.onmessage = async e => {
 
   if (m.type === "candidate") {
     const cameraId = m.cameraId;
+
     const pc = peers.get(cameraId);
 
     if (!pc) return;
 
     if (pc.remoteDescription) {
-      await pc.addIceCandidate(m.candidate).catch(() => {});
+      await pc.addIceCandidate(
+        m.candidate
+      ).catch(() => {});
     } else {
       if (!pendingCandidates.has(cameraId)) {
         pendingCandidates.set(cameraId, []);
       }
-      pendingCandidates.get(cameraId).push(m.candidate);
+
+      pendingCandidates
+        .get(cameraId)
+        .push(m.candidate);
     }
   }
 };
 
+
 ws.onclose = () => {
-  status.textContent = "🔴 Viewer connection closed";
+  status.textContent =
+    "🔴 Viewer connection closed";
 };
 </script>
+
 </body>
 </html>
