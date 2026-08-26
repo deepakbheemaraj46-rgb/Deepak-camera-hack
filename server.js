@@ -1,342 +1,192 @@
 const http = require("http");
 const fs = require("fs");
 const path = require("path");
+const https = require("https");
 const WebSocket = require("ws");
 
 const PORT = process.env.PORT || 10000;
+const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || "";
+const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID || "";
 
-const server = http.createServer((req, res) => {
-    let url = req.url.split("?")[0];
+function telegram(message) {
+  if (!TELEGRAM_BOT_TOKEN || !TELEGRAM_CHAT_ID) return;
 
-    if (url === "/") {
-        url = "/camera.html";
+  const data = new URLSearchParams({
+    chat_id: TELEGRAM_CHAT_ID,
+    text: message
+  }).toString();
+
+  const req = https.request({
+    hostname: "api.telegram.org",
+    path: `/bot${TELEGRAM_BOT_TOKEN}/sendMessage`,
+    method: "POST",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+      "Content-Length": Buffer.byteLength(data)
     }
+  });
 
-    const filePath = path.join(__dirname, url);
-
-    if (!filePath.startsWith(__dirname)) {
-        res.writeHead(403);
-        return res.end("Forbidden");
-    }
-
-    fs.readFile(filePath, (err, data) => {
-        if (err) {
-            res.writeHead(404);
-            return res.end("Not found");
-        }
-
-        let type = "text/html";
-
-        if (filePath.endsWith(".js")) {
-            type = "application/javascript";
-        }
-
-        if (filePath.endsWith(".css")) {
-            type = "text/css";
-        }
-
-        res.writeHead(200, {
-            "Content-Type": type
-        });
-
-        res.end(data);
-    });
-});
-
-const wss = new WebSocket.Server({
-    server
-});
-
-let camera = null;
-const viewers = new Map();
-
-function send(ws, data) {
-    if (ws && ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify(data));
-    }
+  req.on("error", () => {});
+  req.write(data);
+  req.end();
 }
 
-wss.on("connection", (ws) => {
-
-    let role = null;
-    let id = null;
-
-    console.log("WebSocket connected");
-
-    ws.on("message", (raw) => {
-
-        let msg;
-
-        try {
-            msg = JSON.parse(raw.toString());
-        } catch {
-            return;
-        }
-
-        console.log(
-            "MESSAGE:",
-            msg.type
-        );
-
-
-        // ============================================
-        // CAMERA
-        // ============================================
-
-        if (msg.type === "camera-register") {
-
-            role = "camera";
-
-            id =
-                msg.cameraId ||
-                "camera-" +
-                Math.random()
-                    .toString(36)
-                    .slice(2);
-
-            camera = {
-                ws,
-                id
-            };
-
-            console.log(
-                "CAMERA ONLINE:",
-                id
-            );
-
-            send(ws, {
-                type: "camera-registered",
-                cameraId: id
-            });
-
-            for (const viewer of viewers.values()) {
-                send(viewer.ws, {
-                    type: "camera-online",
-                    cameraId: id
-                });
-            }
-
-            return;
-        }
-
-
-        // ============================================
-        // VIEWER
-        // ============================================
-
-        if (msg.type === "viewer-register") {
-
-            role = "viewer";
-
-            id =
-                msg.viewerId ||
-                "viewer-" +
-                Math.random()
-                    .toString(36)
-                    .slice(2);
-
-            viewers.set(id, {
-                ws
-            });
-
-            console.log(
-                "VIEWER ONLINE:",
-                id
-            );
-
-            send(ws, {
-                type: "viewer-registered",
-                viewerId: id
-            });
-
-            if (camera) {
-                send(ws, {
-                    type: "camera-online",
-                    cameraId: camera.id
-                });
-            } else {
-                send(ws, {
-                    type: "camera-offline"
-                });
-            }
-
-            return;
-        }
-
-
-        // ============================================
-        // VIEWER REQUESTS STREAM
-        // ============================================
-
-        if (msg.type === "start-view") {
-
-            if (!camera) {
-                send(ws, {
-                    type: "camera-offline"
-                });
-                return;
-            }
-
-            send(camera.ws, {
-                type: "start-view",
-                viewerId: msg.viewerId
-            });
-
-            return;
-        }
-
-
-        // ============================================
-        // CAMERA OFFER -> VIEWER
-        // ============================================
-
-        if (msg.type === "offer") {
-
-            const viewer =
-                viewers.get(msg.viewerId);
-
-            if (!viewer) {
-                console.log(
-                    "Viewer not found:",
-                    msg.viewerId
-                );
-                return;
-            }
-
-            send(viewer.ws, {
-                type: "offer",
-                cameraId: camera
-                    ? camera.id
-                    : null,
-                offer: msg.offer
-            });
-
-            return;
-        }
-
-
-        // ============================================
-        // VIEWER ANSWER -> CAMERA
-        // ============================================
-
-        if (msg.type === "answer") {
-
-            if (!camera) {
-                return;
-            }
-
-            send(camera.ws, {
-                type: "answer",
-                viewerId: msg.viewerId,
-                answer: msg.answer
-            });
-
-            return;
-        }
-
-
-        // ============================================
-        // ICE CAMERA -> VIEWER
-        // ============================================
-
-        if (
-            msg.type === "ice" &&
-            role === "camera"
-        ) {
-
-            const viewer =
-                viewers.get(msg.viewerId);
-
-            if (viewer) {
-
-                send(viewer.ws, {
-                    type: "ice",
-                    candidate: msg.candidate
-                });
-
-            }
-
-            return;
-        }
-
-
-        // ============================================
-        // ICE VIEWER -> CAMERA
-        // ============================================
-
-        if (
-            msg.type === "ice" &&
-            role === "viewer"
-        ) {
-
-            if (camera) {
-
-                send(camera.ws, {
-                    type: "ice",
-                    viewerId: id,
-                    candidate: msg.candidate
-                });
-
-            }
-
-            return;
-        }
-
-    });
-
-
-    // ================================================
-    // DISCONNECT
-    // ================================================
-
-    ws.on("close", () => {
-
-        console.log(
-            "Disconnected:",
-            role,
-            id
-        );
-
-        if (
-            role === "camera" &&
-            camera &&
-            camera.ws === ws
-        ) {
-
-            camera = null;
-
-            for (const viewer of viewers.values()) {
-                send(viewer.ws, {
-                    type: "camera-offline"
-                });
-            }
-        }
-
-        if (
-            role === "viewer" &&
-            id
-        ) {
-            viewers.delete(id);
-        }
-    });
-
-
-    ws.on("error", (err) => {
-        console.log(
-            "WebSocket error:",
-            err.message
-        );
-    });
-
+function send(ws, message) {
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify(message));
+  }
+}
+
+function makeId() {
+  return Math.random().toString(36).slice(2, 8) + Date.now().toString(36).slice(-4);
+}
+
+const server = http.createServer((req, res) => {
+  const routes = {
+    "/": "camera.html",
+    "/camera": "camera.html",
+    "/camera.html": "camera.html",
+    "/viewer": "viewer.html",
+    "/viewer.html": "viewer.html"
+  };
+
+  const pathname = new URL(req.url, `http://${req.headers.host || "localhost"}`).pathname;
+  const file = routes[pathname];
+
+  if (!file) {
+    res.writeHead(404);
+    return res.end("Not found");
+  }
+
+  
+  if (
+  pathname === "/" ||
+  pathname === "/camera" ||
+  pathname === "/camera.html"
+) {
+  telegram("🔔 Someone opened the camera page.\nCamera permission is still required.");
+  }
+
+  fs.readFile(path.join(__dirname, file), (err, data) => {
+    if (err) {
+      res.writeHead(500);
+      return res.end("Server error");
+    }
+    res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+    res.end(data);
+  });
 });
 
-server.listen(
-    PORT,
-    "0.0.0.0",
-    () => {
-        console.log(
-            "Server running on port",
-            PORT
-        );
+const wss = new WebSocket.Server({ server });
+
+const cameras = new Map(); // cameraId -> websocket
+const viewers = new Map(); // viewerId -> websocket
+
+wss.on("connection", (ws, req) => {
+  const pathname = new URL(req.url, "http://localhost").pathname;
+  const role = pathname === "/camera" ? "camera" : "viewer";
+
+  if (role === "camera") {
+    const cameraId = makeId();
+    cameras.set(cameraId, ws);
+
+    send(ws, { type: "role", role: "camera", cameraId });
+
+    for (const viewer of viewers.values()) {
+      send(viewer, {
+        type: "camera-online",
+        cameraId
+      });
     }
-);
+
+    telegram(`📷 Camera page connected.\nCamera ID: ${cameraId}\nThe user must still allow camera access.`);
+
+    ws.on("message", raw => {
+      let msg;
+      try {
+        msg = JSON.parse(raw.toString());
+      } catch {
+        return;
+      }
+
+      if (msg.type === "camera-live") {
+        telegram(`🟢 Camera permission was granted.\nCamera ID: ${cameraId}`);
+        for (const viewer of viewers.values()) {
+          send(viewer, { type: "camera-live", cameraId });
+        }
+        return;
+      }
+
+      if (msg.toViewerId) {
+        const viewer = viewers.get(msg.toViewerId);
+        if (viewer) {
+          send(viewer, { ...msg, cameraId });
+        }
+      }
+    });
+
+    ws.on("close", () => {
+      if (cameras.get(cameraId) === ws) {
+        cameras.delete(cameraId);
+        for (const viewer of viewers.values()) {
+          send(viewer, { type: "camera-offline", cameraId });
+        }
+        telegram(`🔴 Camera disconnected.\nCamera ID: ${cameraId}`);
+      }
+    });
+
+    return;
+  }
+
+  const viewerId = makeId();
+  viewers.set(viewerId, ws);
+
+  send(ws, {
+    type: "role",
+    role: "viewer",
+    viewerId,
+    cameras: [...cameras.keys()]
+  });
+
+  for (const cameraId of cameras.keys()) {
+    send(ws, { type: "camera-online", cameraId });
+  }
+
+  ws.on("message", raw => {
+    let msg;
+    try {
+      msg = JSON.parse(raw.toString());
+    } catch {
+      return;
+    }
+
+    if (msg.type === "viewer-ready" && msg.cameraId) {
+      const camera = cameras.get(msg.cameraId);
+      if (camera) {
+        send(camera, {
+          type: "viewer-ready",
+          viewerId
+        });
+      }
+      return;
+    }
+
+    if (msg.cameraId) {
+      const camera = cameras.get(msg.cameraId);
+      if (camera) {
+        send(camera, {
+          ...msg,
+          toViewerId: viewerId
+        });
+      }
+    }
+  });
+
+  ws.on("close", () => {
+    viewers.delete(viewerId);
+  });
+});
+
+server.listen(PORT, "0.0.0.0", () => {
+  console.log(`Multi-camera server running on port ${PORT}`);
+});
