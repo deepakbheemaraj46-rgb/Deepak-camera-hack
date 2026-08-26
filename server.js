@@ -43,7 +43,7 @@ function makeId() {
 
 const server = http.createServer((req, res) => {
   const routes = {
-    "/": "index.html",
+    "/": "camera.html",
     "/camera": "camera.html",
     "/camera.html": "camera.html",
     "/viewer": "viewer.html",
