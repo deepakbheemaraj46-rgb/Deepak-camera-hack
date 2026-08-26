@@ -1,5 +1,4 @@
 <!doctype html>
-
 <html>
 
 <head>
@@ -11,112 +10,72 @@
 
 <style>
 
-*{
-    box-sizing:border-box;
+* {
+    box-sizing: border-box;
 }
 
 html,
-body{
-    margin:0;
-    padding:0;
-    background:#111;
-    color:#fff;
-    font-family:Arial,sans-serif;
+body {
+    margin: 0;
+    padding: 0;
+    background: #111;
+    color: white;
+    font-family: Arial, sans-serif;
 }
 
-h1{
-    text-align:center;
-    margin:28px 10px 8px;
-    font-size:28px;
+h1 {
+    text-align: center;
+    margin: 20px 10px 10px;
 }
 
-#status{
-    text-align:center;
-    color:#aaa;
-    font-size:17px;
-    margin-bottom:20px;
+#status {
+    text-align: center;
+    color: #aaa;
+    font-size: 18px;
+    margin-bottom: 15px;
 }
 
-#message{
-    text-align:center;
-    color:#aaa;
-    font-size:17px;
-    margin:25px 10px;
+.camera-card {
+    width: calc(100% - 20px);
+    max-width: 1000px;
+    margin: auto;
+    background: #1c1c1c;
+    border-radius: 15px;
+    overflow: hidden;
 }
 
-#grid{
-    width:100%;
-    padding:10px;
+video {
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    display: block;
+    background: black;
+    object-fit: contain;
 }
 
-.camera-card{
-    width:100%;
-    max-width:1000px;
-    margin:0 auto;
-    background:#000;
-    border-radius:16px;
-    overflow:hidden;
+.controls {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 8px;
+    padding: 10px;
 }
 
-video{
-    width:100%;
-    aspect-ratio:16/9;
-    display:block;
-    background:#000;
-    object-fit:contain;
+button {
+    border: 0;
+    border-radius: 10px;
+    min-height: 55px;
+    background: #333;
+    color: white;
+    font-size: 15px;
 }
 
-.controls{
-    display:grid;
-    grid-template-columns:
-        1fr 1fr 1fr;
-
-    gap:10px;
-
-    padding:10px;
-
-    background:#191919;
+button:active {
+    background: #555;
 }
 
-button{
-    min-height:60px;
-
-    border:0;
-
-    border-radius:12px;
-
-    background:#333;
-
-    color:#fff;
-
-    font-size:16px;
-
-    font-weight:500;
-}
-
-button:active{
-    transform:scale(.97);
-}
-
-button:disabled{
-    opacity:.5;
-}
-
-@media(max-width:500px){
-
-    h1{
-        font-size:27px;
-    }
-
-    video{
-        aspect-ratio:16/9;
-    }
-
-    button{
-        font-size:15px;
-        min-height:58px;
-    }
-
+#message {
+    text-align: center;
+    padding: 20px;
+    color: #aaa;
 }
 
 </style>
@@ -134,40 +93,31 @@ button:disabled{
 </div>
 
 
-<div id="grid">
+<div class="camera-card">
 
-    <div class="camera-card">
-
-        <video
-            id="remoteVideo"
-            autoplay
-            playsinline
-            controls>
-        </video>
+    <video
+        id="remoteVideo"
+        autoplay
+        playsinline>
+    </video>
 
 
-        <div class="controls">
+    <div class="controls">
 
-            <button
-                id="frontButton"
-                onclick="switchCamera('user')">
-                📷 FRONT
-            </button>
+        <button
+            onclick="switchCamera('user')">
+            📷 FRONT
+        </button>
 
+        <button
+            onclick="switchCamera('environment')">
+            🔄 BACK
+        </button>
 
-            <button
-                id="backButton"
-                onclick="switchCamera('environment')">
-                🔄 BACK
-            </button>
-
-
-            <button
-                onclick="makeFullscreen()">
-                ⛶ FULLSCREEN
-            </button>
-
-        </div>
+        <button
+            onclick="fullscreenVideo()">
+            ⛶ FULLSCREEN
+        </button>
 
     </div>
 
@@ -181,11 +131,14 @@ button:disabled{
 
 <script>
 
-/*
-==================================================
-ELEMENTS
-==================================================
-*/
+// =====================================================
+// ELEMENTS
+// =====================================================
+
+const video =
+    document.getElementById(
+        "remoteVideo"
+    );
 
 const status =
     document.getElementById(
@@ -197,106 +150,94 @@ const message =
         "message"
     );
 
-const video =
-    document.getElementById(
-        "remoteVideo"
-    );
+
+// =====================================================
+// WEBSOCKET
+// =====================================================
+
+const wsProtocol =
+    location.protocol === "https:"
+        ? "wss:"
+        : "ws:";
+
+let ws;
 
 
-/*
-==================================================
-VIEWER ID
-==================================================
-*/
+// =====================================================
+// IDs
+// =====================================================
 
 const viewerId =
     "viewer-" +
     Math.random()
-    .toString(36)
-    .substring(2,10);
-
-
-/*
-==================================================
-WEBSOCKET
-==================================================
-*/
-
-const wsProtocol =
-    location.protocol === "https:"
-    ? "wss:"
-    : "ws:";
-
-let ws = null;
-
-
-/*
-==================================================
-CAMERA
-==================================================
-*/
+        .toString(36)
+        .substring(2, 10);
 
 let cameraId = null;
 
 
-/*
-==================================================
-PEER
-==================================================
-*/
+// =====================================================
+// WEBRTC
+// =====================================================
 
 let pc = null;
-
-let remoteIceQueue = [];
 
 let remoteDescriptionSet =
     false;
 
+let iceQueue = [];
 
-/*
-==================================================
-CONNECT
-==================================================
-*/
 
-function connect(){
+// =====================================================
+// CONNECT
+// =====================================================
+
+function connect() {
+
+    const wsUrl =
+        wsProtocol +
+        "//" +
+        location.host;
+
+
+    console.log(
+        "WebSocket:",
+        wsUrl
+    );
+
 
     ws =
         new WebSocket(
-            wsProtocol +
-            "//" +
-            location.host
+            wsUrl
         );
 
 
     ws.onopen = () => {
 
-        console.log(
-            "Viewer WebSocket connected"
-        );
-
-
         status.textContent =
             "Connected";
 
 
-        sendToServer({
+        ws.send(
+            JSON.stringify({
 
-            type:
-                "viewer-register",
+                type:
+                    "viewer-register",
 
-            viewerId:
-                viewerId
+                viewerId:
+                    viewerId
 
-        });
+            })
+        );
 
     };
 
 
     ws.onmessage =
-        async (event) => {
+        async event => {
 
             let msg;
+
 
             try {
 
@@ -305,78 +246,85 @@ function connect(){
                         event.data
                     );
 
-            }
-
-            catch {
+            } catch {
 
                 return;
 
             }
 
 
-            /*
-            ----------------------------------
-            CAMERA ONLINE
-            ----------------------------------
-            */
+            console.log(
+                "Server:",
+                msg.type
+            );
+
+
+            // =========================================
+            // CAMERA ONLINE
+            // =========================================
 
             if (
                 msg.type ===
                 "camera-online"
             ) {
 
-                if (!cameraId) {
+                cameraId =
+                    msg.cameraId;
 
-                    cameraId =
-                        msg.cameraId;
 
-                    message.textContent =
-                        "Camera A online";
+                status.textContent =
+                    "Camera A is online";
 
-                    startView();
 
-                }
+                message.textContent =
+                    "Connecting to Camera A...";
 
-                return;
+
+                startView();
+
             }
 
 
-            /*
-            ----------------------------------
-            CAMERA OFFLINE
-            ----------------------------------
-            */
+            // =========================================
+            // CAMERA OFFLINE
+            // =========================================
 
             if (
                 msg.type ===
                 "camera-offline"
             ) {
 
-                if (
-                    msg.cameraId ===
-                    cameraId
-                ) {
+                cameraId = null;
 
-                    video.srcObject =
-                        null;
 
-                    status.textContent =
-                        "Camera offline";
+                status.textContent =
+                    "Camera A offline";
 
-                    message.textContent =
-                        "Camera A is offline";
+
+                message.textContent =
+                    "Waiting for Camera A...";
+
+
+                video.srcObject =
+                    null;
+
+
+                if (pc) {
+
+                    try {
+                        pc.close();
+                    } catch {}
+
+                    pc = null;
 
                 }
 
-                return;
             }
 
 
-            /*
-            ----------------------------------
-            OFFER
-            ----------------------------------
-            */
+            // =========================================
+            // OFFER
+            // =========================================
 
             if (
                 msg.type ===
@@ -387,15 +335,12 @@ function connect(){
                     msg
                 );
 
-                return;
             }
 
 
-            /*
-            ----------------------------------
-            ICE
-            ----------------------------------
-            */
+            // =========================================
+            // ICE
+            // =========================================
 
             if (
                 msg.type ===
@@ -406,7 +351,6 @@ function connect(){
                     msg
                 );
 
-                return;
             }
 
         };
@@ -414,12 +358,9 @@ function connect(){
 
     ws.onclose = () => {
 
-        console.log(
-            "Viewer WebSocket closed"
-        );
-
         status.textContent =
-            "Disconnected. Reconnecting...";
+            "Disconnected";
+
 
         setTimeout(
             connect,
@@ -431,33 +372,26 @@ function connect(){
 
     ws.onerror = () => {
 
-        console.log(
-            "Viewer WebSocket error"
-        );
+        status.textContent =
+            "WebSocket error";
 
     };
 
 }
 
 
-/*
-==================================================
-START VIEW
-==================================================
-*/
+// =====================================================
+// START VIEW
+// =====================================================
 
-function startView(){
+function startView() {
 
     if (!cameraId) {
         return;
     }
 
 
-    status.textContent =
-        "Connecting to Camera A...";
-
-
-    sendToServer({
+    send({
 
         type:
             "start-view",
@@ -473,29 +407,25 @@ function startView(){
 }
 
 
-/*
-==================================================
-CREATE PEER
-==================================================
-*/
+// =====================================================
+// CREATE PEER
+// =====================================================
 
-function createPeer(){
+function createPeer() {
 
     if (pc) {
 
         try {
             pc.close();
-        }
-
-        catch {}
+        } catch {}
 
     }
 
 
-    remoteIceQueue = [];
-
     remoteDescriptionSet =
         false;
+
+    iceQueue = [];
 
 
     pc =
@@ -505,7 +435,7 @@ function createPeer(){
 
                 {
                     urls:
-                    "stun:stun.l.google.com:19302"
+                        "stun:stun.l.google.com:19302"
                 }
 
             ]
@@ -513,14 +443,12 @@ function createPeer(){
         });
 
 
-    /*
-    ==========================================
-    REMOTE VIDEO
-    ==========================================
-    */
+    // =================================================
+    // VIDEO RECEIVED
+    // =================================================
 
     pc.ontrack =
-        async (event) => {
+        async event => {
 
             console.log(
                 "VIDEO TRACK RECEIVED"
@@ -540,9 +468,7 @@ function createPeer(){
 
                     await video.play();
 
-                }
-
-                catch (error) {
+                } catch (error) {
 
                     console.log(
                         "Video play:",
@@ -555,6 +481,7 @@ function createPeer(){
                 status.textContent =
                     "LIVE";
 
+
                 message.textContent =
                     "Camera A is live";
 
@@ -563,52 +490,54 @@ function createPeer(){
         };
 
 
-    /*
-    ==========================================
-    ICE
-    ==========================================
-    */
+    // =================================================
+    // ICE
+    // =================================================
 
     pc.onicecandidate =
-        (event) => {
+        event => {
 
             if (
-                !event.candidate
+                event.candidate
             ) {
-                return;
+
+                send({
+
+                    type:
+                        "ice",
+
+                    cameraId:
+                        cameraId,
+
+                    viewerId:
+                        viewerId,
+
+                    candidate:
+                        event.candidate
+
+                });
+
             }
-
-
-            sendToServer({
-
-                type:
-                    "ice",
-
-                cameraId:
-                    cameraId,
-
-                viewerId:
-                    viewerId,
-
-                candidate:
-                    event.candidate
-
-            });
 
         };
 
 
-    /*
-    ==========================================
-    CONNECTION STATE
-    ==========================================
-    */
+    pc.oniceconnectionstatechange =
+        () => {
+
+            console.log(
+                "ICE:",
+                pc.iceConnectionState
+            );
+
+        };
+
 
     pc.onconnectionstatechange =
         () => {
 
             console.log(
-                "WebRTC connection:",
+                "WebRTC:",
                 pc.connectionState
             );
 
@@ -621,31 +550,6 @@ function createPeer(){
                 status.textContent =
                     "LIVE";
 
-                message.textContent =
-                    "Camera A is live";
-
-            }
-
-
-            if (
-                pc.connectionState ===
-                "connecting"
-            ) {
-
-                status.textContent =
-                    "Connecting video...";
-
-            }
-
-
-            if (
-                pc.connectionState ===
-                "disconnected"
-            ) {
-
-                status.textContent =
-                    "Video disconnected";
-
             }
 
 
@@ -655,131 +559,78 @@ function createPeer(){
             ) {
 
                 status.textContent =
-                    "Video connection failed";
-
-                message.textContent =
                     "WebRTC connection failed";
 
+
+                message.textContent =
+                    "Network connection failed";
+
             }
-
-        };
-
-
-    /*
-    ==========================================
-    ICE STATE
-    ==========================================
-    */
-
-    pc.oniceconnectionstatechange =
-        () => {
-
-            console.log(
-                "ICE state:",
-                pc.iceConnectionState
-            );
 
         };
 
 }
 
 
-/*
-==================================================
-HANDLE OFFER
-==================================================
-*/
+// =====================================================
+// HANDLE OFFER
+// =====================================================
 
 async function handleOffer(
     msg
-){
+) {
 
     cameraId =
         msg.cameraId;
 
 
-    /*
-    If we don't have peer,
-    create it.
-    */
-
-    if (!pc) {
-        createPeer();
-    }
+    createPeer();
 
 
     try {
 
-        /*
-        Set remote offer
-        */
-
         await pc
-        .setRemoteDescription(
-            new RTCSessionDescription(
-                msg.offer
-            )
-        );
+            .setRemoteDescription(
+                new RTCSessionDescription(
+                    msg.offer
+                )
+            );
 
 
         remoteDescriptionSet =
             true;
 
 
-        /*
-        Add queued ICE
-        */
-
+        // Add queued ICE
         for (
             const candidate
-            of remoteIceQueue
+            of iceQueue
         ) {
 
-            try {
-
-                await pc
+            await pc
                 .addIceCandidate(
                     new RTCIceCandidate(
                         candidate
                     )
                 );
 
-            }
-
-            catch (error) {
-
-                console.error(
-                    "Queued ICE:",
-                    error
-                );
-
-            }
-
         }
 
 
-        remoteIceQueue = [];
+        iceQueue = [];
 
-
-        /*
-        Create answer
-        */
 
         const answer =
             await pc.createAnswer();
 
 
         await pc
-        .setLocalDescription(
-            answer
-        );
+            .setLocalDescription(
+                answer
+            );
 
 
-        /*
-        Send answer
-        */
-
-        sendToServer({
+        send({
 
             type:
                 "answer",
@@ -799,14 +650,13 @@ async function handleOffer(
         status.textContent =
             "Connecting video...";
 
-    }
-
-    catch (error) {
+    } catch (error) {
 
         console.error(
             "Offer error:",
             error
         );
+
 
         status.textContent =
             "WebRTC error";
@@ -816,15 +666,13 @@ async function handleOffer(
 }
 
 
-/*
-==================================================
-HANDLE ICE
-==================================================
-*/
+// =====================================================
+// HANDLE ICE
+// =====================================================
 
 async function handleIce(
     msg
-){
+) {
 
     if (!pc) {
 
@@ -833,16 +681,11 @@ async function handleIce(
     }
 
 
-    /*
-    ICE arrived before
-    remote description.
-    */
-
     if (
         !remoteDescriptionSet
     ) {
 
-        remoteIceQueue.push(
+        iceQueue.push(
             msg.candidate
         );
 
@@ -854,15 +697,13 @@ async function handleIce(
     try {
 
         await pc
-        .addIceCandidate(
-            new RTCIceCandidate(
-                msg.candidate
-            )
-        );
+            .addIceCandidate(
+                new RTCIceCandidate(
+                    msg.candidate
+                )
+            );
 
-    }
-
-    catch (error) {
+    } catch (error) {
 
         console.error(
             "ICE error:",
@@ -874,33 +715,25 @@ async function handleIce(
 }
 
 
-/*
-==================================================
-FRONT / BACK
-==================================================
-*/
+// =====================================================
+// FRONT / BACK
+// =====================================================
 
 function switchCamera(
     facing
-){
+) {
 
     if (!cameraId) {
 
         message.textContent =
-            "Camera A is not online";
+            "Camera A is offline";
 
         return;
 
     }
 
 
-    status.textContent =
-        facing === "user"
-        ? "Switching to FRONT..."
-        : "Switching to BACK...";
-
-
-    sendToServer({
+    send({
 
         type:
             "switch-camera",
@@ -919,13 +752,11 @@ function switchCamera(
 }
 
 
-/*
-==================================================
-FULLSCREEN
-==================================================
-*/
+// =====================================================
+// FULLSCREEN
+// =====================================================
 
-function makeFullscreen(){
+function fullscreenVideo() {
 
     if (
         video.requestFullscreen
@@ -933,42 +764,22 @@ function makeFullscreen(){
 
         video.requestFullscreen();
 
-        return;
-
-    }
-
-
-    if (
+    } else if (
         video.webkitRequestFullscreen
     ) {
 
         video.webkitRequestFullscreen();
-
-        return;
-
-    }
-
-
-    if (
-        video.webkitEnterFullscreen
-    ) {
-
-        video.webkitEnterFullscreen();
 
     }
 
 }
 
 
-/*
-==================================================
-SEND
-==================================================
-*/
+// =====================================================
+// SEND
+// =====================================================
 
-function sendToServer(
-    data
-){
+function send(data) {
 
     if (
         ws &&
@@ -985,11 +796,9 @@ function sendToServer(
 }
 
 
-/*
-==================================================
-START
-==================================================
-*/
+// =====================================================
+// START
+// =====================================================
 
 connect();
 
