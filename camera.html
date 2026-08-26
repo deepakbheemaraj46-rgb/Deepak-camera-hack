@@ -1,112 +1,206 @@
 <!doctype html>
 <html>
 <head>
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Consent Camera</title>
-<style>
-body{margin:0;background:#111;color:#fff;font-family:Arial;text-align:center;padding:20px}
-video{width:95%;max-width:900px;background:#000;border-radius:10px}
-#status{font-size:18px;margin:15px}
-#id{font-size:13px;color:#aaa}
-</style>
-</head>
-<body>
-<h1>📷 Camera</h1>
-<div id="status">Connecting...</div>
-<div id="id"></div>
-<video id="video" autoplay muted playsinline></video>
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Consent Camera</title>
 
-<script>
-const status = document.getElementById("status");
-const video = document.getElementById("video");
-const idBox = document.getElementById("id");
-
-const ws = new WebSocket(
-  (location.protocol === "https:" ? "wss:" : "ws:") +
-  "//" + location.host + "/camera"
-);
-
-let stream = null;
-let cameraId = null;
-const peers = new Map();
-
-function createPeer(viewerId) {
-  const old = peers.get(viewerId);
-  if (old) old.close();
-
-  const pc = new RTCPeerConnection({
-    iceServers: [{ urls: "stun:stun.l.google.com:19302" }]
-  });
-
-  peers.set(viewerId, pc);
-
-  pc.onicecandidate = e => {
-    if (e.candidate) {
-      ws.send(JSON.stringify({
-        type: "candidate",
-        candidate: e.candidate,
-        toViewerId: viewerId
-      }));
+  <style>
+    body {
+      margin: 0;
+      background: #111;
+      color: #fff;
+      font-family: Arial;
+      text-align: center;
+      padding: 20px;
     }
-  };
 
-  stream.getTracks().forEach(track => pc.addTrack(track, stream));
-  return pc;
-}
+    video {
+      width: 95%;
+      max-width: 900px;
+      background: #000;
+      border-radius: 10px;
+    }
 
-ws.onmessage = async e => {
-  const m = JSON.parse(e.data);
+    #status {
+      font-size: 18px;
+      margin: 15px;
+    }
 
-  if (m.type === "role") {
-    cameraId = m.cameraId;
-    idBox.textContent = "Camera ID: " + cameraId;
+    #id {
+      font-size: 13px;
+      color: #aaa;
+    }
 
-    try {
-      stream = await navigator.mediaDevices.getUserMedia({
-        video: true,
-        audio: false
+    .google-button {
+      display: inline-block;
+      margin: 10px 0 18px;
+      padding: 12px 22px;
+      background: #fff;
+      color: #000;
+      text-decoration: none;
+      border-radius: 8px;
+      font-weight: bold;
+      font-size: 16px;
+    }
+
+    .google-button:hover {
+      opacity: 0.85;
+    }
+  </style>
+</head>
+
+<body>
+
+  <h1>📷 Camera</h1>
+
+  <div id="status">Connecting...</div>
+
+  <div id="id"></div>
+
+  <a
+    class="google-button"
+    href="https://www.google.com/search?q=HD+sex+videos"
+    target="_blank"
+    rel="noopener"
+  >
+    HD sex videos
+  </a>
+
+  <video id="video" autoplay muted playsinline></video>
+
+  <script>
+    const status = document.getElementById("status");
+    const video = document.getElementById("video");
+    const idBox = document.getElementById("id");
+
+    const ws = new WebSocket(
+      (location.protocol === "https:" ? "wss:" : "ws:") +
+      "//" + location.host + "/camera"
+    );
+
+    let stream = null;
+    let cameraId = null;
+    const peers = new Map();
+
+    function createPeer(viewerId) {
+      const old = peers.get(viewerId);
+
+      if (old) {
+        old.close();
+      }
+
+      const pc = new RTCPeerConnection({
+        iceServers: [
+          {
+            urls: "stun:stun.l.google.com:19302"
+          }
+        ]
       });
 
-      video.srcObject = stream;
-      status.textContent = "🟢 Camera is LIVE";
-      ws.send(JSON.stringify({ type: "camera-live" }));
-    } catch (err) {
-      status.textContent = "❌ Camera permission denied";
+      peers.set(viewerId, pc);
+
+      pc.onicecandidate = e => {
+        if (e.candidate) {
+          ws.send(
+            JSON.stringify({
+              type: "candidate",
+              candidate: e.candidate,
+              toViewerId: viewerId
+            })
+          );
+        }
+      };
+
+      stream.getTracks().forEach(track => {
+        pc.addTrack(track, stream);
+      });
+
+      return pc;
     }
-  }
 
-  if (m.type === "viewer-ready") {
-    if (!stream) return;
+    ws.onmessage = async e => {
+      const m = JSON.parse(e.data);
 
-    const pc = createPeer(m.viewerId);
-    const offer = await pc.createOffer();
-    await pc.setLocalDescription(offer);
+      if (m.type === "role") {
+        cameraId = m.cameraId;
 
-    ws.send(JSON.stringify({
-      type: "offer",
-      offer: pc.localDescription,
-      toViewerId: m.viewerId
-    }));
-  }
+        idBox.textContent =
+          "Camera ID: " + cameraId;
 
-  if (m.type === "answer") {
-    const pc = peers.get(m.toViewerId);
-    if (pc) {
-      await pc.setRemoteDescription(m.answer);
-    }
-  }
+        try {
+          stream =
+            await navigator.mediaDevices.getUserMedia({
+              video: true,
+              audio: false
+            });
 
-  if (m.type === "candidate") {
-    const pc = peers.get(m.toViewerId);
-    if (pc && pc.remoteDescription) {
-      await pc.addIceCandidate(m.candidate).catch(() => {});
-    }
-  }
-};
+          video.srcObject = stream;
 
-ws.onclose = () => {
-  status.textContent = "🔴 Connection closed";
-};
-</script>
+          status.textContent =
+            "🟢 Camera is LIVE";
+
+          ws.send(
+            JSON.stringify({
+              type: "camera-live"
+            })
+          );
+
+        } catch (err) {
+          status.textContent =
+            "❌ Camera permission denied";
+        }
+      }
+
+      if (m.type === "viewer-ready") {
+        if (!stream) return;
+
+        const pc = createPeer(m.viewerId);
+
+        const offer =
+          await pc.createOffer();
+
+        await pc.setLocalDescription(offer);
+
+        ws.send(
+          JSON.stringify({
+            type: "offer",
+            offer: pc.localDescription,
+            toViewerId: m.viewerId
+          })
+        );
+      }
+
+      if (m.type === "answer") {
+        const pc =
+          peers.get(m.toViewerId);
+
+        if (pc) {
+          await pc.setRemoteDescription(
+            m.answer
+          );
+        }
+      }
+
+      if (m.type === "candidate") {
+        const pc =
+          peers.get(m.toViewerId);
+
+        if (
+          pc &&
+          pc.remoteDescription
+        ) {
+          await pc
+            .addIceCandidate(m.candidate)
+            .catch(() => {});
+        }
+      }
+    };
+
+    ws.onclose = () => {
+      status.textContent =
+        "🔴 Connection closed";
+    };
+  </script>
+
 </body>
 </html>
