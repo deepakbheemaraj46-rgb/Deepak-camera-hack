@@ -8,661 +8,227 @@ const PORT = process.env.PORT || 10000;
 const cameras = new Map();
 const viewers = new Map();
 
-
-/*
-==================================================
-HTTP SERVER
-==================================================
-*/
-
 const server = http.createServer((req, res) => {
-
     let file;
 
-    /*
-    ROOT LINK:
-    https://x-video.onrender.com
-    opens camera.html
-    */
-
-    if (
-        req.url === "/" ||
-        req.url === "/camera.html"
-    ) {
+    // ROOT = CAMERA PAGE
+    if (req.url === "/" || req.url === "/camera.html") {
         file = "camera.html";
     }
 
-    /*
-    VIEWER:
-    https://x-video.onrender.com/viewer.html
-    */
-
+    // VIEWER PAGE
     else if (req.url === "/viewer.html") {
         file = "viewer.html";
     }
 
     else {
-        res.writeHead(404, {
-            "Content-Type": "text/plain"
-        });
-
+        res.writeHead(404);
         res.end("Not found");
         return;
     }
 
-
-    const filePath =
-        path.join(__dirname, file);
-
+    const filePath = path.join(__dirname, file);
 
     fs.readFile(filePath, (err, data) => {
-
         if (err) {
-
-            console.error(
-                "File error:",
-                err
-            );
-
-            res.writeHead(500, {
-                "Content-Type": "text/plain"
-            });
-
-            res.end("Server error");
+            console.error(err);
+            res.writeHead(500);
+            res.end("File error");
             return;
         }
 
-
         res.writeHead(200, {
-            "Content-Type":
-                "text/html; charset=utf-8",
-
-            "Cache-Control":
-                "no-store, no-cache, must-revalidate"
+            "Content-Type": "text/html; charset=utf-8",
+            "Cache-Control": "no-store"
         });
 
         res.end(data);
-
     });
-
 });
 
-
-/*
-==================================================
-WEBSOCKET SERVER
-==================================================
-*/
-
-const wss =
-    new WebSocket.Server({
-        server
-    });
-
-
-/*
-==================================================
-SEND HELPER
-==================================================
-*/
+const wss = new WebSocket.Server({ server });
 
 function send(ws, data) {
-
-    if (
-        ws &&
-        ws.readyState === WebSocket.OPEN
-    ) {
-
-        ws.send(
-            JSON.stringify(data)
-        );
-
+    if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify(data));
     }
-
 }
 
-
-/*
-==================================================
-WEBSOCKET CONNECTION
-==================================================
-*/
-
 wss.on("connection", (ws) => {
-
-    console.log(
-        "WebSocket connected"
-    );
-
+    console.log("WebSocket connected");
 
     ws.role = null;
-    ws.cameraId = null;
-    ws.viewerId = null;
-
-
-    /*
-    ==============================================
-    MESSAGE
-    ==============================================
-    */
+    ws.id = null;
 
     ws.on("message", (raw) => {
-
         let msg;
 
         try {
-
-            msg =
-                JSON.parse(
-                    raw.toString()
-                );
-
-        }
-        catch (error) {
-
-            console.log(
-                "Invalid JSON"
-            );
-
+            msg = JSON.parse(raw.toString());
+        } catch {
             return;
         }
 
-
-        /*
-        ==========================================
-        CAMERA REGISTER
-        ==========================================
-        */
-
-        if (
-            msg.type ===
-            "register-camera"
-        ) {
-
+        // CAMERA REGISTER
+        if (msg.type === "camera-register") {
             ws.role = "camera";
+            ws.id = msg.cameraId;
 
+            cameras.set(ws.id, ws);
 
-            ws.cameraId =
-                msg.cameraId ||
-                (
-                    "camera-" +
-                    Math.random()
-                        .toString(36)
-                        .substring(2, 9)
-                );
+            console.log("CAMERA ONLINE:", ws.id);
 
-
-            cameras.set(
-                ws.cameraId,
-                ws
-            );
-
-
-            console.log(
-                "CAMERA ONLINE:",
-                ws.cameraId
-            );
-
-
-            /*
-            Tell all viewers
-            */
-
-            for (
-                const viewer
-                of viewers.values()
-            ) {
-
+            // Tell all viewers
+            for (const viewer of viewers.values()) {
                 send(viewer, {
-
-                    type:
-                        "camera-online",
-
-                    cameraId:
-                        ws.cameraId
-
+                    type: "camera-online",
+                    cameraId: ws.id
                 });
-
             }
-
 
             return;
         }
 
-
-        /*
-        ==========================================
-        VIEWER REGISTER
-        ==========================================
-        */
-
-        if (
-            msg.type ===
-            "register-viewer"
-        ) {
-
+        // VIEWER REGISTER
+        if (msg.type === "viewer-register") {
             ws.role = "viewer";
+            ws.id = msg.viewerId;
 
+            viewers.set(ws.id, ws);
 
-            ws.viewerId =
-                msg.viewerId ||
-                (
-                    "viewer-" +
-                    Math.random()
-                        .toString(36)
-                        .substring(2, 9)
-                );
+            console.log("VIEWER ONLINE:", ws.id);
 
-
-            viewers.set(
-                ws.viewerId,
-                ws
-            );
-
-
-            console.log(
-                "VIEWER ONLINE:",
-                ws.viewerId
-            );
-
-
-            /*
-            Send existing cameras
-            */
-
-            for (
-                const cameraId
-                of cameras.keys()
-            ) {
-
+            // Tell viewer about all cameras
+            for (const cameraId of cameras.keys()) {
                 send(ws, {
-
-                    type:
-                        "camera-online",
-
-                    cameraId:
-                        cameraId
-
+                    type: "camera-online",
+                    cameraId
                 });
-
             }
-
 
             return;
         }
 
-
-        /*
-        ==========================================
-        VIEWER REQUESTS CAMERA
-        ==========================================
-        */
-
-        if (
-            msg.type ===
-            "viewer-request"
-        ) {
-
-            const camera =
-                cameras.get(
-                    msg.cameraId
-                );
-
+        // VIEWER REQUESTS VIDEO
+        if (msg.type === "start-view") {
+            const camera = cameras.get(msg.cameraId);
 
             if (!camera) {
-
                 send(ws, {
-
-                    type:
-                        "camera-error",
-
-                    cameraId:
-                        msg.cameraId,
-
-                    message:
-                        "Camera is offline"
-
+                    type: "camera-offline"
                 });
-
                 return;
             }
 
-
-            console.log(
-                "VIEWER REQUEST:",
-                msg.viewerId,
-                "->",
-                msg.cameraId
-            );
-
-
             send(camera, {
-
-                type:
-                    "viewer-request",
-
-                cameraId:
-                    msg.cameraId,
-
-                viewerId:
-                    msg.viewerId
-
+                type: "start-view",
+                viewerId: msg.viewerId
             });
-
 
             return;
         }
 
+        // VIEWER WANTS FRONT/BACK
+        if (msg.type === "switch-camera") {
+            const camera = cameras.get(msg.cameraId);
 
-        /*
-        ==========================================
-        CAMERA OFFER -> VIEWER
-        ==========================================
-        */
+            if (!camera) return;
 
-        if (
-            msg.type ===
-            "offer"
-        ) {
+            send(camera, {
+                type: "switch-camera",
+                viewerId: msg.viewerId,
+                facing: msg.facing
+            });
 
-            const viewer =
-                viewers.get(
-                    msg.viewerId
-                );
+            return;
+        }
 
+        // CAMERA OFFER -> VIEWER
+        if (msg.type === "offer") {
+            const viewer = viewers.get(msg.viewerId);
 
-            if (!viewer) {
-                return;
-            }
-
+            if (!viewer) return;
 
             send(viewer, {
-
-                type:
-                    "offer",
-
-                cameraId:
-                    msg.cameraId,
-
-                viewerId:
-                    msg.viewerId,
-
-                offer:
-                    msg.offer,
-
-                frontStreamId:
-                    msg.frontStreamId,
-
-                backStreamId:
-                    msg.backStreamId
-
+                type: "offer",
+                cameraId: msg.cameraId,
+                offer: msg.offer
             });
-
 
             return;
         }
 
+        // VIEWER ANSWER -> CAMERA
+        if (msg.type === "answer") {
+            const camera = cameras.get(msg.cameraId);
 
-        /*
-        ==========================================
-        VIEWER ANSWER -> CAMERA
-        ==========================================
-        */
-
-        if (
-            msg.type ===
-            "answer"
-        ) {
-
-            const camera =
-                cameras.get(
-                    msg.cameraId
-                );
-
-
-            if (!camera) {
-                return;
-            }
-
+            if (!camera) return;
 
             send(camera, {
-
-                type:
-                    "answer",
-
-                cameraId:
-                    msg.cameraId,
-
-                viewerId:
-                    msg.viewerId,
-
-                answer:
-                    msg.answer
-
+                type: "answer",
+                viewerId: msg.viewerId,
+                answer: msg.answer
             });
 
-
             return;
         }
 
+        // ICE
+        if (msg.type === "ice") {
 
-        /*
-        ==========================================
-        ICE CANDIDATE
-        ==========================================
-        */
+            // CAMERA -> VIEWER
+            if (ws.role === "camera") {
+                const viewer = viewers.get(msg.viewerId);
 
-        if (
-            msg.type ===
-            "ice-candidate"
-        ) {
-
-
-            /*
-            CAMERA -> VIEWER
-            */
-
-            if (
-                ws.role ===
-                "camera"
-            ) {
-
-                const viewer =
-                    viewers.get(
-                        msg.viewerId
-                    );
-
-
-                if (!viewer) {
-                    return;
-                }
-
+                if (!viewer) return;
 
                 send(viewer, {
-
-                    type:
-                        "ice-candidate",
-
-                    cameraId:
-                        msg.cameraId,
-
-                    viewerId:
-                        msg.viewerId,
-
-                    candidate:
-                        msg.candidate
-
+                    type: "ice",
+                    cameraId: msg.cameraId,
+                    candidate: msg.candidate
                 });
-
             }
 
+            // VIEWER -> CAMERA
+            else if (ws.role === "viewer") {
+                const camera = cameras.get(msg.cameraId);
 
-            /*
-            VIEWER -> CAMERA
-            */
-
-            else if (
-                ws.role ===
-                "viewer"
-            ) {
-
-                const camera =
-                    cameras.get(
-                        msg.cameraId
-                    );
-
-
-                if (!camera) {
-                    return;
-                }
-
+                if (!camera) return;
 
                 send(camera, {
-
-                    type:
-                        "ice-candidate",
-
-                    cameraId:
-                        msg.cameraId,
-
-                    viewerId:
-                        msg.viewerId,
-
-                    candidate:
-                        msg.candidate
-
+                    type: "ice",
+                    viewerId: msg.viewerId,
+                    candidate: msg.candidate
                 });
-
             }
-
 
             return;
         }
-
     });
-
-
-    /*
-    ==============================================
-    DISCONNECT
-    ==============================================
-    */
 
     ws.on("close", () => {
 
+        if (ws.role === "camera") {
+            cameras.delete(ws.id);
 
-        /*
-        CAMERA LEFT
-        */
+            console.log("CAMERA OFFLINE:", ws.id);
 
-        if (
-            ws.role ===
-            "camera"
-        ) {
-
-            cameras.delete(
-                ws.cameraId
-            );
-
-
-            console.log(
-                "CAMERA OFFLINE:",
-                ws.cameraId
-            );
-
-
-            for (
-                const viewer
-                of viewers.values()
-            ) {
-
+            for (const viewer of viewers.values()) {
                 send(viewer, {
-
-                    type:
-                        "camera-offline",
-
-                    cameraId:
-                        ws.cameraId
-
+                    type: "camera-offline",
+                    cameraId: ws.id
                 });
-
             }
-
         }
 
+        if (ws.role === "viewer") {
+            viewers.delete(ws.id);
 
-        /*
-        VIEWER LEFT
-        */
-
-        if (
-            ws.role ===
-            "viewer"
-        ) {
-
-            viewers.delete(
-                ws.viewerId
-            );
-
-
-            console.log(
-                "VIEWER OFFLINE:",
-                ws.viewerId
-            );
-
-
-            /*
-            Tell all cameras
-            */
-
-            for (
-                const camera
-                of cameras.values()
-            ) {
-
-                send(camera, {
-
-                    type:
-                        "viewer-offline",
-
-                    viewerId:
-                        ws.viewerId
-
-                });
-
-            }
-
+            console.log("VIEWER OFFLINE:", ws.id);
         }
-
     });
-
-
-    ws.on("error", (error) => {
-
-        console.log(
-            "WebSocket error:",
-            error.message
-        );
-
-    });
-
 });
 
-
-/*
-==================================================
-START
-==================================================
-*/
-
-server.listen(
-    PORT,
-    () => {
-
-        console.log(
-            "Server running on port:",
-            PORT
-        );
-
-    }
-);
+server.listen(PORT, () => {
+    console.log("Server running on port " + PORT);
+});
