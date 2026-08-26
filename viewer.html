@@ -22,28 +22,6 @@ h1{
   margin:15px;
 }
 
-/* Big Full Screen Button */
-#fullscreenBtn{
-  display:block;
-  margin:10px auto 15px;
-  padding:14px 28px;
-  font-size:18px;
-  font-weight:bold;
-  border:none;
-  border-radius:10px;
-  background:#1976d2;
-  color:white;
-  cursor:pointer;
-}
-
-#fullscreenBtn:hover{
-  background:#1565c0;
-}
-
-#viewer{
-  width:100%;
-}
-
 #grid{
   display:grid;
   grid-template-columns:repeat(auto-fit,minmax(280px,1fr));
@@ -64,46 +42,35 @@ h1{
   cursor:pointer;
 }
 
+/* LIVE VIDEO FULL SCREEN */
+.card video:fullscreen{
+  width:100vw;
+  height:100vh;
+  object-fit:contain;
+  background:#000;
+  border-radius:0;
+}
+
 .label{
   font-size:14px;
   padding:6px;
   color:#ddd;
-}
-
-/* Fullscreen layout */
-#viewer:fullscreen{
-  background:#111;
-  width:100vw;
-  height:100vh;
-  overflow:auto;
-}
-
-#viewer:fullscreen #grid{
-  height:calc(100vh - 100px);
 }
 </style>
 </head>
 
 <body>
 
-<div id="viewer">
-
 <h1>👁️ Live Camera Viewer</h1>
 
 <div id="status">Connecting...</div>
 
-<button id="fullscreenBtn">⛶ Full Screen</button>
-
 <div id="grid"></div>
-
-</div>
 
 <script>
 
 const status = document.getElementById("status");
 const grid = document.getElementById("grid");
-const viewer = document.getElementById("viewer");
-const fullscreenBtn = document.getElementById("fullscreenBtn");
 
 const ws = new WebSocket(
   (location.protocol === "https:" ? "wss:" : "ws:") +
@@ -113,54 +80,6 @@ const ws = new WebSocket(
 const peers = new Map();
 const pendingCandidates = new Map();
 const cards = new Map();
-
-
-/* =========================
-   FULL SCREEN BUTTON
-========================= */
-
-fullscreenBtn.onclick = async () => {
-
-  try {
-
-    if (!document.fullscreenElement) {
-
-      await viewer.requestFullscreen();
-
-      fullscreenBtn.textContent = "⛶ Exit Full Screen";
-
-    } else {
-
-      await document.exitFullscreen();
-
-      fullscreenBtn.textContent = "⛶ Full Screen";
-
-    }
-
-  } catch (err) {
-
-    console.log("Fullscreen error:", err);
-
-  }
-
-};
-
-
-/* Update button when user presses ESC */
-
-document.addEventListener("fullscreenchange", () => {
-
-  if (document.fullscreenElement) {
-
-    fullscreenBtn.textContent = "⛶ Exit Full Screen";
-
-  } else {
-
-    fullscreenBtn.textContent = "⛶ Full Screen";
-
-  }
-
-});
 
 
 /* =========================
@@ -180,7 +99,7 @@ function addCamera(cameraId) {
   const label = document.createElement("div");
 
   label.className = "label";
-  label.textContent = "Camera " + cameraId;
+  label.textContent = "📹 Camera " + cameraId;
 
 
   const video = document.createElement("video");
@@ -191,8 +110,8 @@ function addCamera(cameraId) {
 
 
   /*
-     DOUBLE CLICK CAMERA
-     → CAMERA FULL SCREEN
+     DOUBLE CLICK LIVE VIDEO
+     → FULL SCREEN
   */
 
   video.addEventListener("dblclick", async () => {
@@ -211,7 +130,7 @@ function addCamera(cameraId) {
 
     } catch (err) {
 
-      console.log("Camera fullscreen error:", err);
+      console.log("Fullscreen error:", err);
 
     }
 
@@ -223,9 +142,10 @@ function addCamera(cameraId) {
 
   grid.appendChild(card);
 
+
   cards.set(cameraId, {
-    card,
-    video
+    card: card,
+    video: video
   });
 
 }
@@ -286,6 +206,8 @@ function startPeer(cameraId) {
   pendingCandidates.set(cameraId, []);
 
 
+  /* ICE CANDIDATE */
+
   pc.onicecandidate = e => {
 
     if (e.candidate) {
@@ -293,10 +215,8 @@ function startPeer(cameraId) {
       ws.send(JSON.stringify({
 
         type: "candidate",
-
         candidate: e.candidate,
-
-        cameraId
+        cameraId: cameraId
 
       }));
 
@@ -304,6 +224,8 @@ function startPeer(cameraId) {
 
   };
 
+
+  /* LIVE VIDEO */
 
   pc.ontrack = e => {
 
@@ -320,11 +242,12 @@ function startPeer(cameraId) {
   };
 
 
+  /* VIEWER READY */
+
   ws.send(JSON.stringify({
 
     type: "viewer-ready",
-
-    cameraId
+    cameraId: cameraId
 
   }));
 
@@ -332,7 +255,7 @@ function startPeer(cameraId) {
 
 
 /* =========================
-   WEBSOCKET MESSAGES
+   WEBSOCKET MESSAGE
 ========================= */
 
 ws.onmessage = async e => {
@@ -340,9 +263,12 @@ ws.onmessage = async e => {
   const m = JSON.parse(e.data);
 
 
+  /* ROLE */
+
   if (m.type === "role") {
 
-    status.textContent = "🟡 Waiting for cameras...";
+    status.textContent =
+      "🟡 Waiting for cameras...";
 
 
     if (Array.isArray(m.cameras)) {
@@ -354,137 +280,35 @@ ws.onmessage = async e => {
   }
 
 
+  /* CAMERA ONLINE */
+
   if (m.type === "camera-online") {
 
     startPeer(m.cameraId);
 
-    status.textContent = "🟢 Camera connected";
+    status.textContent =
+      "🟢 Camera connected";
 
   }
 
+
+  /* CAMERA LIVE */
 
   if (m.type === "camera-live") {
 
     addCamera(m.cameraId);
 
-    status.textContent = "🟢 Camera is LIVE";
+    status.textContent =
+      "🟢 Camera is LIVE";
 
   }
 
+
+  /* CAMERA OFFLINE */
 
   if (m.type === "camera-offline") {
 
     removeCamera(m.cameraId);
 
 
-    if (peers.size === 0) {
-
-      status.textContent = "🔴 No cameras connected";
-
-    }
-
-  }
-
-
-  if (m.type === "offer") {
-
-    const cameraId = m.cameraId;
-
-
-    if (!peers.has(cameraId)) {
-
-      startPeer(cameraId);
-
-    }
-
-
-    const pc = peers.get(cameraId);
-
-
-    await pc.setRemoteDescription(m.offer);
-
-
-    const queued =
-      pendingCandidates.get(cameraId) || [];
-
-
-    for (const c of queued) {
-
-      await pc.addIceCandidate(c).catch(() => {});
-
-    }
-
-
-    pendingCandidates.set(cameraId, []);
-
-
-    const answer =
-      await pc.createAnswer();
-
-
-    await pc.setLocalDescription(answer);
-
-
-    ws.send(JSON.stringify({
-
-      type: "answer",
-
-      answer: pc.localDescription,
-
-      cameraId
-
-    }));
-
-  }
-
-
-  if (m.type === "candidate") {
-
-    const cameraId = m.cameraId;
-
-    const pc = peers.get(cameraId);
-
-
-    if (!pc) return;
-
-
-    if (pc.remoteDescription) {
-
-      await pc.addIceCandidate(
-        m.candidate
-      ).catch(() => {});
-
-    } else {
-
-      if (!pendingCandidates.has(cameraId)) {
-
-        pendingCandidates.set(cameraId, []);
-
-      }
-
-      pendingCandidates
-        .get(cameraId)
-        .push(m.candidate);
-
-    }
-
-  }
-
-};
-
-
-/* =========================
-   WEBSOCKET CLOSED
-========================= */
-
-ws.onclose = () => {
-
-  status.textContent =
-    "🔴 Viewer connection closed";
-
-};
-
-</script>
-
-</body>
-</html>
+    if (
