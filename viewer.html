@@ -1,10 +1,11 @@
 <!doctype html>
+
 <html>
 
 <head>
 
 <meta name="viewport"
-      content="width=device-width,initial-scale=1">
+content="width=device-width,initial-scale=1">
 
 <title>Multi Camera Viewer</title>
 
@@ -18,14 +19,14 @@ html,
 body {
     margin: 0;
     padding: 0;
-    background: #111;
+    background: #0b0b0b;
     color: white;
     font-family: Arial, sans-serif;
 }
 
 h1 {
     text-align: center;
-    margin: 20px 10px 10px;
+    margin: 20px 10px 8px;
 }
 
 #status {
@@ -35,47 +36,64 @@ h1 {
     margin-bottom: 15px;
 }
 
-.camera-card {
-    width: calc(100% - 20px);
-    max-width: 1000px;
+.grid {
+    display: grid;
+    grid-template-columns:
+        repeat(auto-fit, minmax(300px, 1fr));
+
+    gap: 14px;
+
+    padding: 12px;
+
+    max-width: 1200px;
+
     margin: auto;
-    background: #1c1c1c;
+}
+
+.card {
+    background: #161616;
     border-radius: 15px;
+    padding: 10px;
     overflow: hidden;
+}
+
+.card h2 {
+    text-align: center;
+    margin: 8px;
 }
 
 video {
     width: 100%;
     aspect-ratio: 16 / 9;
     display: block;
-    background: black;
+    background: #000;
     object-fit: contain;
-}
-
-.controls {
-    display: grid;
-    grid-template-columns: 1fr 1fr 1fr;
-    gap: 8px;
-    padding: 10px;
+    border-radius: 10px;
 }
 
 button {
+    display: block;
+    margin: 15px auto;
+    padding: 14px 25px;
     border: 0;
     border-radius: 10px;
-    min-height: 55px;
     background: #333;
     color: white;
-    font-size: 15px;
-}
-
-button:active {
-    background: #555;
+    font-size: 16px;
 }
 
 #message {
     text-align: center;
-    padding: 20px;
     color: #aaa;
+    padding: 15px;
+}
+
+@media (max-width: 650px) {
+
+    .grid {
+        grid-template-columns: 1fr;
+    }
+
 }
 
 </style>
@@ -93,30 +111,43 @@ button:active {
 </div>
 
 
-<div class="camera-card">
+<div class="grid">
 
-    <video
-        id="remoteVideo"
-        autoplay
-        playsinline>
-    </video>
+    <div class="card">
 
+        <h2>
+            📷 FRONT CAMERA
+        </h2>
 
-    <div class="controls">
+        <video
+            id="frontVideo"
+            autoplay
+            playsinline>
+        </video>
 
         <button
-            onclick="switchCamera('user')">
-            📷 FRONT
+            onclick="fullscreen('frontVideo')">
+            ⛶ FRONT FULLSCREEN
         </button>
 
-        <button
-            onclick="switchCamera('environment')">
-            🔄 BACK
-        </button>
+    </div>
+
+
+    <div class="card">
+
+        <h2>
+            📷 BACK CAMERA
+        </h2>
+
+        <video
+            id="backVideo"
+            autoplay
+            playsinline>
+        </video>
 
         <button
-            onclick="fullscreenVideo()">
-            ⛶ FULLSCREEN
+            onclick="fullscreen('backVideo')">
+            ⛶ BACK FULLSCREEN
         </button>
 
     </div>
@@ -131,13 +162,14 @@ button:active {
 
 <script>
 
-// =====================================================
-// ELEMENTS
-// =====================================================
-
-const video =
+const frontVideo =
     document.getElementById(
-        "remoteVideo"
+        "frontVideo"
+    );
+
+const backVideo =
+    document.getElementById(
+        "backVideo"
     );
 
 const status =
@@ -151,36 +183,17 @@ const message =
     );
 
 
-// =====================================================
-// WEBSOCKET
-// =====================================================
-
 const wsProtocol =
     location.protocol === "https:"
         ? "wss:"
         : "ws:";
 
+
 let ws;
 
-
-// =====================================================
-// IDs
-// =====================================================
-
-const viewerId =
-    "viewer-" +
-    Math.random()
-        .toString(36)
-        .substring(2, 10);
+let pc = null;
 
 let cameraId = null;
-
-
-// =====================================================
-// WEBRTC
-// =====================================================
-
-let pc = null;
 
 let remoteDescriptionSet =
     false;
@@ -188,47 +201,39 @@ let remoteDescriptionSet =
 let iceQueue = [];
 
 
-// =====================================================
-// CONNECT
-// =====================================================
+// ====================================================
+// WEBSOCKET
+// ====================================================
 
 function connect() {
 
-    const wsUrl =
+    ws = new WebSocket(
         wsProtocol +
         "//" +
-        location.host;
-
-
-    console.log(
-        "WebSocket:",
-        wsUrl
+        location.host
     );
 
 
-    ws =
-        new WebSocket(
-            wsUrl
+    ws.onopen = () => {
+
+        console.log(
+            "WebSocket connected"
         );
 
-
-    ws.onopen = () => {
 
         status.textContent =
             "Connected";
 
 
-        ws.send(
-            JSON.stringify({
+        send({
 
-                type:
-                    "viewer-register",
+            type:
+                "viewer-register",
 
-                viewerId:
-                    viewerId
+            viewerId:
+                viewerId
 
-            })
-        );
+        });
 
     };
 
@@ -237,7 +242,6 @@ function connect() {
         async event => {
 
             let msg;
-
 
             try {
 
@@ -254,14 +258,10 @@ function connect() {
 
 
             console.log(
-                "Server:",
+                "SERVER:",
                 msg.type
             );
 
-
-            // =========================================
-            // CAMERA ONLINE
-            // =========================================
 
             if (
                 msg.type ===
@@ -277,7 +277,7 @@ function connect() {
 
 
                 message.textContent =
-                    "Connecting to Camera A...";
+                    "Connecting to both cameras...";
 
 
                 startView();
@@ -285,17 +285,10 @@ function connect() {
             }
 
 
-            // =========================================
-            // CAMERA OFFLINE
-            // =========================================
-
             if (
                 msg.type ===
                 "camera-offline"
             ) {
-
-                cameraId = null;
-
 
                 status.textContent =
                     "Camera A offline";
@@ -305,26 +298,14 @@ function connect() {
                     "Waiting for Camera A...";
 
 
-                video.srcObject =
+                frontVideo.srcObject =
                     null;
 
-
-                if (pc) {
-
-                    try {
-                        pc.close();
-                    } catch {}
-
-                    pc = null;
-
-                }
+                backVideo.srcObject =
+                    null;
 
             }
 
-
-            // =========================================
-            // OFFER
-            // =========================================
 
             if (
                 msg.type ===
@@ -337,10 +318,6 @@ function connect() {
 
             }
 
-
-            // =========================================
-            // ICE
-            // =========================================
 
             if (
                 msg.type ===
@@ -369,49 +346,53 @@ function connect() {
 
     };
 
-
-    ws.onerror = () => {
-
-        status.textContent =
-            "WebSocket error";
-
-    };
-
 }
 
 
-// =====================================================
+// ====================================================
+// VIEWER ID
+// ====================================================
+
+const viewerId =
+    "viewer-" +
+    Math.random()
+        .toString(36)
+        .substring(2, 10);
+
+
+// ====================================================
 // START VIEW
-// =====================================================
+// ====================================================
 
 function startView() {
-
-    if (!cameraId) {
-        return;
-    }
-
 
     send({
 
         type:
             "start-view",
 
-        cameraId:
-            cameraId,
-
         viewerId:
-            viewerId
+            viewerId,
+
+        cameraId:
+            cameraId
 
     });
 
 }
 
 
-// =====================================================
-// CREATE PEER
-// =====================================================
+// ====================================================
+// HANDLE OFFER
+// ====================================================
 
-function createPeer() {
+async function handleOffer(
+    msg
+) {
+
+    cameraId =
+        msg.cameraId;
+
 
     if (pc) {
 
@@ -443,56 +424,82 @@ function createPeer() {
         });
 
 
-    // =================================================
-    // VIDEO RECEIVED
-    // =================================================
+    // ================================================
+    // RECEIVE TRACKS
+    // ================================================
 
     pc.ontrack =
         async event => {
 
             console.log(
-                "VIDEO TRACK RECEIVED"
+                "TRACK RECEIVED:",
+                event.track.kind,
+                event.track.label
             );
 
 
             if (
-                event.streams &&
-                event.streams[0]
+                event.track.kind !==
+                "video"
+            ) {
+                return;
+            }
+
+
+            const stream =
+                event.streams[0];
+
+
+            /*
+             * Camera A sends:
+             *
+             * Stream 1 = FRONT
+             * Stream 2 = BACK
+             *
+             * We identify them by the
+             * order they arrive.
+             */
+
+            if (
+                !frontVideo.srcObject
             ) {
 
-                video.srcObject =
-                    event.streams[0];
+                frontVideo.srcObject =
+                    stream;
+
+                await frontVideo.play()
+                    .catch(() => {});
 
 
-                try {
+                console.log(
+                    "Assigned FRONT"
+                );
 
-                    await video.play();
+            } else if (
+                !backVideo.srcObject
+            ) {
 
-                } catch (error) {
+                backVideo.srcObject =
+                    stream;
 
-                    console.log(
-                        "Video play:",
-                        error
-                    );
-
-                }
-
-
-                status.textContent =
-                    "LIVE";
+                await backVideo.play()
+                    .catch(() => {});
 
 
-                message.textContent =
-                    "Camera A is live";
+                console.log(
+                    "Assigned BACK"
+                );
 
             }
+
+            checkLive();
 
         };
 
 
-    // =================================================
+    // ================================================
     // ICE
-    // =================================================
+    // ================================================
 
     pc.onicecandidate =
         event => {
@@ -505,9 +512,6 @@ function createPeer() {
 
                     type:
                         "ice",
-
-                    cameraId:
-                        cameraId,
 
                     viewerId:
                         viewerId,
@@ -537,7 +541,7 @@ function createPeer() {
         () => {
 
             console.log(
-                "WebRTC:",
+                "WEBRTC:",
                 pc.connectionState
             );
 
@@ -548,7 +552,7 @@ function createPeer() {
             ) {
 
                 status.textContent =
-                    "LIVE";
+                    "🟢 LIVE";
 
             }
 
@@ -561,31 +565,14 @@ function createPeer() {
                 status.textContent =
                     "WebRTC connection failed";
 
-
-                message.textContent =
-                    "Network connection failed";
-
             }
 
         };
 
-}
 
-
-// =====================================================
-// HANDLE OFFER
-// =====================================================
-
-async function handleOffer(
-    msg
-) {
-
-    cameraId =
-        msg.cameraId;
-
-
-    createPeer();
-
+    // ================================================
+    // REMOTE OFFER
+    // ================================================
 
     try {
 
@@ -601,7 +588,6 @@ async function handleOffer(
             true;
 
 
-        // Add queued ICE
         for (
             const candidate
             of iceQueue
@@ -635,11 +621,11 @@ async function handleOffer(
             type:
                 "answer",
 
-            cameraId:
-                cameraId,
-
             viewerId:
                 viewerId,
+
+            cameraId:
+                cameraId,
 
             answer:
                 pc.localDescription
@@ -647,16 +633,12 @@ async function handleOffer(
         });
 
 
-        status.textContent =
-            "Connecting video...";
-
     } catch (error) {
 
         console.error(
-            "Offer error:",
+            "WebRTC offer error:",
             error
         );
-
 
         status.textContent =
             "WebRTC error";
@@ -666,18 +648,16 @@ async function handleOffer(
 }
 
 
-// =====================================================
-// HANDLE ICE
-// =====================================================
+// ====================================================
+// ICE
+// ====================================================
 
 async function handleIce(
     msg
 ) {
 
     if (!pc) {
-
-        createPeer();
-
+        return;
     }
 
 
@@ -715,48 +695,51 @@ async function handleIce(
 }
 
 
-// =====================================================
-// FRONT / BACK
-// =====================================================
+// ====================================================
+// CHECK LIVE
+// ====================================================
 
-function switchCamera(
-    facing
-) {
+function checkLive() {
 
-    if (!cameraId) {
+    const front =
+        !!frontVideo.srcObject;
+
+    const back =
+        !!backVideo.srcObject;
+
+
+    if (front && back) {
+
+        status.textContent =
+            "🟢 FRONT + BACK LIVE";
 
         message.textContent =
-            "Camera A is offline";
+            "Both cameras are streaming.";
 
-        return;
+    } else if (front) {
+
+        status.textContent =
+            "🟡 FRONT LIVE";
+
+        message.textContent =
+            "Back camera was not received.";
 
     }
-
-
-    send({
-
-        type:
-            "switch-camera",
-
-        cameraId:
-            cameraId,
-
-        viewerId:
-            viewerId,
-
-        facing:
-            facing
-
-    });
 
 }
 
 
-// =====================================================
+// ====================================================
 // FULLSCREEN
-// =====================================================
+// ====================================================
 
-function fullscreenVideo() {
+function fullscreen(
+    id
+) {
+
+    const video =
+        document.getElementById(id);
+
 
     if (
         video.requestFullscreen
@@ -775,9 +758,9 @@ function fullscreenVideo() {
 }
 
 
-// =====================================================
+// ====================================================
 // SEND
-// =====================================================
+// ====================================================
 
 function send(data) {
 
@@ -796,9 +779,9 @@ function send(data) {
 }
 
 
-// =====================================================
+// ====================================================
 // START
-// =====================================================
+// ====================================================
 
 connect();
 
