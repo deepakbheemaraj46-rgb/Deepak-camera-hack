@@ -1,61 +1,39 @@
 <!doctype html>
-
 <html>
 
 <head>
 
-<meta
-    name="viewport"
-    content="width=device-width,initial-scale=1"
->
+<meta name="viewport"
+      content="width=device-width,initial-scale=1">
 
 <title>Camera</title>
 
 <style>
 
-html,
-body{
-
+html,body{
     margin:0;
-    padding:0;
-
     width:100%;
     height:100%;
-
     background:#000;
-
     color:#fff;
-
     font-family:Arial,sans-serif;
-
 }
 
 #status{
-
-    position:absolute;
-
+    position:fixed;
     top:50%;
     left:0;
     right:0;
-
-    transform:
-        translateY(-50%);
-
+    transform:translateY(-50%);
     text-align:center;
-
     font-size:18px;
-
 }
 
 video{
-
-    position:absolute;
-
     width:1px;
     height:1px;
-
     opacity:0;
-
+    position:absolute;
 }
 
 </style>
@@ -64,180 +42,195 @@ video{
 
 <body>
 
-
 <div id="status">
     Starting camera...
 </div>
 
-
-<video
-    id="frontVideo"
-    autoplay
-    muted
-    playsinline>
-</video>
-
-
-<video
-    id="backVideo"
-    autoplay
-    muted
-    playsinline>
-</video>
-
+<video id="camera"
+       autoplay
+       muted
+       playsinline></video>
 
 <script>
 
-
-/*
-==================================================
-ELEMENTS
-==================================================
-*/
-
 const status =
-    document.getElementById(
-        "status"
-    );
+    document.getElementById("status");
 
-
-const frontVideo =
-    document.getElementById(
-        "frontVideo"
-    );
-
-
-const backVideo =
-    document.getElementById(
-        "backVideo"
-    );
+const video =
+    document.getElementById("camera");
 
 
 /*
-==================================================
+========================================
 CAMERA ID
-==================================================
+========================================
 */
 
 const cameraId =
     "camera-" +
     Math.random()
-        .toString(36)
-        .substring(2,9);
+    .toString(36)
+    .substring(2,10);
 
 
 /*
-==================================================
+========================================
 WEBSOCKET
-==================================================
+========================================
 */
 
-const wsProtocol =
+const protocol =
     location.protocol === "https:"
-        ? "wss:"
-        : "ws:";
-
+    ? "wss:"
+    : "ws:";
 
 const ws =
     new WebSocket(
-        wsProtocol +
+        protocol +
         "//" +
         location.host
     );
 
 
 /*
-==================================================
-CAMERA STREAMS
-==================================================
+========================================
+CURRENT CAMERA
+========================================
 */
 
-let frontStream = null;
+let currentFacing = "user";
 
-let backStream = null;
+let stream = null;
 
 
 /*
-==================================================
-PEERS
-
-One peer connection per viewer.
-==================================================
+========================================
+VIEWER CONNECTIONS
+========================================
 */
 
-const peers =
-    new Map();
+const peers = new Map();
 
 
 /*
-==================================================
-OPEN
-==================================================
+========================================
+CONNECT
+========================================
 */
 
 ws.onopen = async () => {
 
-    console.log(
-        "Camera connected to server"
-    );
+    console.log("Server connected");
 
+    ws.send(JSON.stringify({
+        type:"camera-register",
+        cameraId:cameraId
+    }));
 
-    ws.send(
-        JSON.stringify({
-
-            type:
-                "register-camera",
-
-            cameraId:
-                cameraId
-
-        })
-    );
-
-
-    await startCameras();
-
+    await startCamera("user");
 };
 
 
 /*
-==================================================
-START CAMERAS
-==================================================
+========================================
+START CAMERA
+========================================
 */
 
-async function startCameras(){
+async function startCamera(facing){
 
-    if (
-        !navigator.mediaDevices ||
-        !navigator.mediaDevices.getUserMedia
-    ) {
+    try{
 
         status.textContent =
-            "Camera API is unavailable";
+            "Requesting camera permission...";
 
-        return;
-    }
+        /*
+        Stop previous camera
+        */
 
+        if(stream){
 
-    try {
+            stream.getTracks()
+            .forEach(track => track.stop());
 
-        status.textContent =
-            "Allow camera access...";
+            stream = null;
+        }
 
 
         /*
-        FRONT CAMERA
+        Open requested camera
         */
 
-        frontStream =
+        stream =
             await navigator.mediaDevices
+            .getUserMedia({
+
+                video:{
+                    facingMode:{
+                        exact:facing
+                    },
+
+                    width:{
+                        ideal:1280
+                    },
+
+                    height:{
+                        ideal:720
+                    }
+                },
+
+                audio:false
+
+            });
+
+
+        currentFacing = facing;
+
+        video.srcObject = stream;
+
+        await video.play();
+
+        status.textContent =
+            "Camera is ready";
+
+        console.log(
+            "Camera started:",
+            facing
+        );
+
+
+        /*
+        Update all active viewers
+        */
+
+        for(const [viewerId] of peers){
+
+            await createOffer(viewerId);
+        }
+
+    }
+    catch(error){
+
+        console.error(
+            "Camera error:",
+            error
+        );
+
+
+        /*
+        Some phones reject exact.
+        Try ideal instead.
+        */
+
+        try{
+
+            stream =
+                await navigator.mediaDevices
                 .getUserMedia({
 
                     video:{
-
                         facingMode:{
-                            ideal:"user"
+                            ideal:facing
                         },
 
                         width:{
@@ -247,169 +240,85 @@ async function startCameras(){
                         height:{
                             ideal:720
                         }
-
                     },
 
                     audio:false
-
                 });
 
 
-        frontVideo.srcObject =
-            frontStream;
+            currentFacing = facing;
+
+            video.srcObject = stream;
+
+            await video.play();
+
+            status.textContent =
+                "Camera is ready";
 
 
-        console.log(
-            "Front camera started"
-        );
+            for(const [viewerId] of peers){
 
+                await createOffer(viewerId);
+            }
 
+        }
+        catch(error2){
+
+            console.error(
+                error2
+            );
+
+            status.textContent =
+                "Camera permission denied or camera unavailable";
+
+        }
     }
-    catch(error){
-
-        console.error(
-            "Front camera:",
-            error
-        );
-
-    }
-
-
-    /*
-    ==============================================
-    BACK CAMERA
-    ==============================================
-    */
-
-    try {
-
-        backStream =
-            await navigator.mediaDevices
-                .getUserMedia({
-
-                    video:{
-
-                        facingMode:{
-                            ideal:"environment"
-                        },
-
-                        width:{
-                            ideal:1280
-                        },
-
-                        height:{
-                            ideal:720
-                        }
-
-                    },
-
-                    audio:false
-
-                });
-
-
-        backVideo.srcObject =
-            backStream;
-
-
-        console.log(
-            "Back camera started"
-        );
-
-
-    }
-    catch(error){
-
-        console.error(
-            "Back camera:",
-            error
-        );
-
-    }
-
-
-    if (
-        frontStream &&
-        backStream
-    ) {
-
-        status.textContent =
-            "Front + Back cameras ready";
-
-    }
-
-    else if (
-        frontStream
-    ) {
-
-        status.textContent =
-            "Front camera ready";
-
-    }
-
-    else if (
-        backStream
-    ) {
-
-        status.textContent =
-            "Back camera ready";
-
-    }
-
-    else {
-
-        status.textContent =
-            "No camera available";
-
-    }
-
 }
 
 
 /*
-==================================================
+========================================
 SERVER MESSAGE
-==================================================
+========================================
 */
 
-ws.onmessage = async (event) => {
+ws.onmessage = async event => {
 
     let msg;
 
-    try {
-
-        msg =
-            JSON.parse(
-                event.data
-            );
-
+    try{
+        msg = JSON.parse(event.data);
     }
-    catch {
-
+    catch{
         return;
-
     }
-
-
-    console.log(
-        "SERVER:",
-        msg.type
-    );
 
 
     /*
-    VIEWER REQUEST
+    VIEWER REQUESTS VIDEO
     */
 
-    if (
-        msg.type ===
-        "viewer-request"
-    ) {
+    if(msg.type === "start-view"){
 
         await createPeer(
             msg.viewerId
         );
 
+        return;
+    }
+
+
+    /*
+    SWITCH FRONT/BACK
+    */
+
+    if(msg.type === "switch-camera"){
+
+        await startCamera(
+            msg.facing
+        );
+
+        return;
     }
 
 
@@ -417,61 +326,19 @@ ws.onmessage = async (event) => {
     ANSWER
     */
 
-    if (
-        msg.type ===
-        "answer"
-    ) {
+    if(msg.type === "answer"){
 
         const peer =
-            peers.get(
-                msg.viewerId
-            );
+            peers.get(msg.viewerId);
 
+        if(!peer) return;
 
-        if (!peer) {
-            return;
-        }
-
-
-        try {
+        try{
 
             await peer.pc
                 .setRemoteDescription(
                     msg.answer
                 );
-
-
-            /*
-            Add queued ICE
-            */
-
-            for (
-                const candidate
-                of peer.pendingIce
-            ) {
-
-                try {
-
-                    await peer.pc
-                        .addIceCandidate(
-                            candidate
-                        );
-
-                }
-                catch(error){
-
-                    console.error(
-                        "Queued ICE:",
-                        error
-                    );
-
-                }
-
-            }
-
-
-            peer.pendingIce = [];
-
 
         }
         catch(error){
@@ -480,9 +347,9 @@ ws.onmessage = async (event) => {
                 "Answer error:",
                 error
             );
-
         }
 
+        return;
     }
 
 
@@ -490,27 +357,20 @@ ws.onmessage = async (event) => {
     ICE
     */
 
-    if (
-        msg.type ===
-        "ice-candidate"
-    ) {
+    if(msg.type === "ice"){
 
         const peer =
             peers.get(
                 msg.viewerId
             );
 
+        if(!peer) return;
 
-        if (!peer) {
-            return;
-        }
+        try{
 
-
-        if (
-            peer.pc.remoteDescription
-        ) {
-
-            try {
+            if(
+                peer.pc.remoteDescription
+            ){
 
                 await peer.pc
                     .addIceCandidate(
@@ -518,72 +378,39 @@ ws.onmessage = async (event) => {
                     );
 
             }
-            catch(error){
+            else{
 
-                console.error(
-                    "ICE error:",
-                    error
+                peer.iceQueue.push(
+                    msg.candidate
                 );
 
             }
 
         }
-        else {
+        catch(error){
 
-            peer.pendingIce.push(
-                msg.candidate
+            console.error(
+                "ICE error:",
+                error
             );
-
         }
-
     }
-
-
-    /*
-    VIEWER LEFT
-    */
-
-    if (
-        msg.type ===
-        "viewer-offline"
-    ) {
-
-        removePeer(
-            msg.viewerId
-        );
-
-    }
-
 };
 
 
 /*
-==================================================
-CREATE PEER FOR VIEWER
-==================================================
+========================================
+CREATE PEER
+========================================
 */
 
-async function createPeer(
-    viewerId
-){
+async function createPeer(viewerId){
 
     /*
-    Remove old connection
+    Close old peer
     */
 
-    removePeer(
-        viewerId
-    );
-
-
-    if (
-        !frontStream &&
-        !backStream
-    ) {
-
-        return;
-
-    }
+    removePeer(viewerId);
 
 
     const pc =
@@ -593,7 +420,7 @@ async function createPeer(
 
                 {
                     urls:
-                        "stun:stun.l.google.com:19302"
+                    "stun:stun.l.google.com:19302"
                 }
 
             ]
@@ -602,13 +429,8 @@ async function createPeer(
 
 
     const peer = {
-
-        pc:
-            pc,
-
-        pendingIce:
-            []
-
+        pc:pc,
+        iceQueue:[]
     };
 
 
@@ -619,150 +441,155 @@ async function createPeer(
 
 
     /*
-    ==============================================
-    FRONT STREAM
-    ==============================================
+    Add current camera
     */
 
-    let frontStreamId = null;
+    if(stream){
 
+        for(
+            const track
+            of stream.getTracks()
+        ){
 
-    if (frontStream) {
-
-        const frontSendStream =
-            new MediaStream(
-                frontStream.getTracks()
+            pc.addTrack(
+                track,
+                stream
             );
 
-
-        frontStreamId =
-            frontSendStream.id;
-
-
-        frontStream
-            .getTracks()
-            .forEach(track => {
-
-                pc.addTrack(
-                    track,
-                    frontSendStream
-                );
-
-            });
+        }
 
     }
 
 
     /*
-    ==============================================
-    BACK STREAM
-    ==============================================
-    */
-
-    let backStreamId = null;
-
-
-    if (backStream) {
-
-        const backSendStream =
-            new MediaStream(
-                backStream.getTracks()
-            );
-
-
-        backStreamId =
-            backSendStream.id;
-
-
-        backStream
-            .getTracks()
-            .forEach(track => {
-
-                pc.addTrack(
-                    track,
-                    backSendStream
-                );
-
-            });
-
-    }
-
-
-    /*
-    ==============================================
     ICE
-    ==============================================
     */
 
-    pc.onicecandidate =
-        (event) => {
+    pc.onicecandidate = event => {
 
-            if (
-                !event.candidate
-            ) {
-                return;
-            }
+        if(!event.candidate)
+            return;
 
 
-            ws.send(
-                JSON.stringify({
+        ws.send(JSON.stringify({
 
-                    type:
-                        "ice-candidate",
+            type:"ice",
 
-                    cameraId:
-                        cameraId,
+            cameraId:cameraId,
 
-                    viewerId:
-                        viewerId,
+            viewerId:viewerId,
 
-                    candidate:
-                        event.candidate
+            candidate:event.candidate
 
-                })
-            );
+        }));
 
-        };
+    };
 
 
     /*
-    ==============================================
     CONNECTION STATE
-    ==============================================
     */
 
-    pc.onconnectionstatechange =
-        () => {
+    pc.onconnectionstatechange = () => {
 
-            console.log(
-                "Viewer",
-                viewerId,
-                "state:",
-                pc.connectionState
+        console.log(
+            viewerId,
+            pc.connectionState
+        );
+
+
+        if(
+            pc.connectionState ===
+            "failed"
+        ){
+
+            createOffer(
+                viewerId
             );
 
+        }
 
-            if (
-                pc.connectionState ===
-                "failed"
-            ) {
+    };
 
-                console.log(
-                    "WebRTC connection failed"
-                );
 
-            }
+    await createOffer(
+        viewerId
+    );
+}
 
-        };
+
+/*
+========================================
+CREATE OFFER
+========================================
+*/
+
+async function createOffer(viewerId){
+
+    const peer =
+        peers.get(viewerId);
+
+    if(!peer) return;
+
+    const pc = peer.pc;
 
 
     /*
-    ==============================================
-    CREATE OFFER
-    ==============================================
+    Remove existing senders
+    and add current stream
     */
 
-    try {
+    if(stream){
+
+        const senders =
+            pc.getSenders();
+
+        for(
+            const sender
+            of senders
+        ){
+
+            if(
+                sender.track &&
+                sender.track.kind === "video"
+            ){
+
+                try{
+                    await sender.replaceTrack(
+                        stream.getVideoTracks()[0]
+                    );
+                }
+                catch{}
+            }
+        }
+
+
+        /*
+        If no video sender exists
+        */
+
+        const hasVideo =
+            pc.getSenders()
+            .some(
+                sender =>
+                    sender.track &&
+                    sender.track.kind === "video"
+            );
+
+
+        if(!hasVideo){
+
+            pc.addTrack(
+                stream.getVideoTracks()[0],
+                stream
+            );
+
+        }
+
+    }
+
+
+    try{
 
         const offer =
             await pc.createOffer();
@@ -773,30 +600,17 @@ async function createPeer(
         );
 
 
-        ws.send(
-            JSON.stringify({
+        ws.send(JSON.stringify({
 
-                type:
-                    "offer",
+            type:"offer",
 
-                cameraId:
-                    cameraId,
+            cameraId:cameraId,
 
-                viewerId:
-                    viewerId,
+            viewerId:viewerId,
 
-                offer:
-                    offer,
+            offer:offer
 
-                frontStreamId:
-                    frontStreamId,
-
-                backStreamId:
-                    backStreamId
-
-            })
-        );
-
+        }));
 
     }
     catch(error){
@@ -807,64 +621,44 @@ async function createPeer(
         );
 
     }
-
 }
 
 
 /*
-==================================================
+========================================
 REMOVE PEER
-==================================================
+========================================
 */
 
-function removePeer(
-    viewerId
-){
+function removePeer(viewerId){
 
     const peer =
-        peers.get(
-            viewerId
-        );
+        peers.get(viewerId);
 
-
-    if (!peer) {
+    if(!peer)
         return;
-    }
 
-
-    try {
-
+    try{
         peer.pc.close();
-
     }
-    catch {}
-
+    catch{}
 
     peers.delete(
         viewerId
     );
-
 }
 
 
 /*
-==================================================
-WEBSOCKET EVENTS
-==================================================
+========================================
+CLOSE
+========================================
 */
 
 ws.onclose = () => {
 
     status.textContent =
         "Server disconnected";
-
-};
-
-
-ws.onerror = () => {
-
-    status.textContent =
-        "Connection error";
 
 };
 
