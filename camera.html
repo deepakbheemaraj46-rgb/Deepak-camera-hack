@@ -2,8 +2,7 @@
 <html>
 <head>
 <meta name="viewport"
-      content="width=device-width,initial-scale=1,maximum-scale=1">
-
+      content="width=device-width,initial-scale=1">
 <title>Camera Sharing</title>
 
 <style>
@@ -19,64 +18,62 @@ html,body{
   font-family:Arial,sans-serif;
 }
 
-body{
+.page{
+  max-width:700px;
+  margin:auto;
+  padding:35px 16px;
   text-align:center;
 }
 
 h1{
-  margin:35px 10px 10px;
-  font-size:30px;
+  font-size:34px;
+  margin:10px 0 18px;
 }
 
-.info{
-  color:#aaa;
-  font-size:17px;
+.message{
+  color:#bbb;
+  font-size:19px;
   line-height:1.5;
-  padding:0 20px;
+  margin-bottom:25px;
 }
 
-#start{
-  width:calc(100% - 40px);
-  max-width:600px;
-  margin:25px auto 15px;
-  padding:17px;
+button{
+  width:100%;
+  padding:18px;
   border:0;
   border-radius:12px;
-  background:#1688ff;
-  color:white;
-  font-size:19px;
+  background:#168cff;
+  color:#fff;
+  font-size:20px;
   font-weight:bold;
+  cursor:pointer;
+}
+
+button:disabled{
+  opacity:.5;
 }
 
 #status{
-  margin:15px;
-  color:#aaa;
+  margin:20px 0;
+  color:#bbb;
   font-size:16px;
 }
 
-.camera-grid{
-  display:grid;
-  grid-template-columns:1fr;
-  gap:15px;
-  padding:15px;
-  max-width:900px;
-  margin:auto;
-}
-
-.camera-box{
+.camera{
   background:#111820;
-  border:1px solid #293440;
+  border:1px solid #293541;
   border-radius:14px;
-  padding:10px;
+  padding:12px;
+  margin-top:16px;
 }
 
-.camera-title{
-  font-size:18px;
-  font-weight:bold;
-  margin-bottom:9px;
+.camera h2{
+  font-size:19px;
+  margin:5px 0 12px;
 }
 
 video{
+  display:block;
   width:100%;
   aspect-ratio:16/9;
   object-fit:cover;
@@ -92,12 +89,13 @@ video{
 
 <body>
 
+<div class="page">
+
 <h1>📷 Camera Sharing</h1>
 
-<div class="info">
-  Press the button below to allow camera access.
-  <br>
-  Both cameras will be shared with the connected viewer.
+<div class="message">
+  Press the button below to give this website camera access.
+  Your front and back camera previews will be shown here.
 </div>
 
 <button id="start">
@@ -108,39 +106,27 @@ video{
   Waiting for permission...
 </div>
 
-<div class="camera-grid">
+<div id="frontBox" class="camera hidden">
+  <h2>📷 FRONT CAMERA</h2>
+  <video id="frontVideo"
+         autoplay
+         muted
+         playsinline></video>
+</div>
 
-  <div class="camera-box">
-    <div class="camera-title">
-      📷 FRONT CAMERA
-    </div>
-
-    <video
-      id="frontVideo"
-      autoplay
-      muted
-      playsinline>
-    </video>
-  </div>
-
-  <div class="camera-box">
-    <div class="camera-title">
-      📷 BACK CAMERA
-    </div>
-
-    <video
-      id="backVideo"
-      autoplay
-      muted
-      playsinline>
-    </video>
-  </div>
+<div id="backBox" class="camera hidden">
+  <h2>📷 BACK CAMERA</h2>
+  <video id="backVideo"
+         autoplay
+         muted
+         playsinline></video>
+</div>
 
 </div>
 
 <script>
 
-const startButton =
+const start =
   document.getElementById("start");
 
 const status =
@@ -152,392 +138,173 @@ const frontVideo =
 const backVideo =
   document.getElementById("backVideo");
 
+const frontBox =
+  document.getElementById("frontBox");
+
+const backBox =
+  document.getElementById("backBox");
 
 let frontStream = null;
 let backStream = null;
 
-let ws = null;
-let cameraId = null;
-
-const peers = new Map();
-
-let socketConnecting = false;
-
 
 /* =====================================================
-   WEBSOCKET
+   CAMERA SUPPORT CHECK
 ===================================================== */
 
-function connectSocket(){
-
-  if(
-    ws &&
-    (
-      ws.readyState === WebSocket.OPEN ||
-      ws.readyState === WebSocket.CONNECTING
-    )
-  ){
-    return;
-  }
-
-  if(socketConnecting){
-    return;
-  }
-
-  socketConnecting = true;
-
-  const protocol =
-    location.protocol === "https:"
-      ? "wss:"
-      : "ws:";
-
-  ws = new WebSocket(
-    protocol +
-    "//" +
-    location.host +
-    "/camera"
-  );
-
-
-  ws.onopen = () => {
-
-    socketConnecting = false;
-
-    console.log("Camera WebSocket connected");
-
-    status.textContent =
-      "🟢 Camera connected";
-
-    sendCameraLive();
-  };
-
-
-  ws.onmessage = async event => {
-
-    let m;
-
-    try{
-      m = JSON.parse(event.data);
-    }catch{
-      return;
-    }
-
-
-    /* CAMERA ID */
-
-    if(m.type === "role"){
-
-      cameraId =
-        m.cameraId;
-
-      console.log(
-        "Camera ID:",
-        cameraId
-      );
-
-      return;
-    }
-
-
-    /* VIEWER READY */
-
-    if(m.type === "viewer-ready"){
-
-      if(
-        !frontStream &&
-        !backStream
-      ){
-        return;
-      }
-
-      await createViewerPeer(
-        m.viewerId
-      );
-
-      return;
-    }
-
-
-    /* ANSWER */
-
-    if(m.type === "answer"){
-
-      const pc =
-        peers.get(
-          m.toViewerId
-        );
-
-      if(!pc){
-        return;
-      }
-
-      try{
-
-        await pc.setRemoteDescription(
-          m.answer
-        );
-
-      }catch(error){
-
-        console.log(
-          "Answer error:",
-          error
-        );
-
-      }
-
-      return;
-    }
-
-
-    /* ICE */
-
-    if(m.type === "candidate"){
-
-      const pc =
-        peers.get(
-          m.toViewerId
-        );
-
-      if(!pc){
-        return;
-      }
-
-      try{
-
-        if(pc.remoteDescription){
-
-          await pc.addIceCandidate(
-            m.candidate
-          );
-
-        }
-
-      }catch(error){
-
-        console.log(
-          "ICE error:",
-          error
-        );
-
-      }
-
-      return;
-    }
-
-  };
-
-
-  ws.onerror = () => {
-
-    socketConnecting = false;
-
-    console.log(
-      "Camera WebSocket error"
-    );
-
-  };
-
-
-  ws.onclose = () => {
-
-    socketConnecting = false;
-
-    console.log(
-      "Camera WebSocket closed"
-    );
-
-    status.textContent =
-      "🔴 Server connection lost";
-
-  };
-
-}
-
-
-/* =====================================================
-   CAMERA LIVE
-===================================================== */
-
-function sendCameraLive(){
-
-  if(
-    !ws ||
-    ws.readyState !== WebSocket.OPEN
-  ){
-    return;
-  }
-
-  ws.send(
-    JSON.stringify({
-      type:"camera-live"
-    })
-  );
-
-}
-
-
-/* =====================================================
-   CREATE WEBRTC PEER
-===================================================== */
-
-async function createViewerPeer(
-  viewerId
+if(
+  !navigator.mediaDevices ||
+  !navigator.mediaDevices.getUserMedia
 ){
 
-  if(
-    peers.has(viewerId)
-  ){
+  status.textContent =
+    "❌ This browser does not support camera access.";
 
-    try{
-      peers.get(viewerId).close();
-    }catch{}
+  start.disabled = true;
 
-    peers.delete(viewerId);
-  }
+}
 
 
-  const pc =
-    new RTCPeerConnection({
+/* =====================================================
+   START
+===================================================== */
 
-      iceServers:[
-        {
-          urls:
-            "stun:stun.l.google.com:19302"
-        }
-      ]
+start.onclick = async () => {
 
-    });
+  start.disabled = true;
 
+  status.textContent =
+    "🟡 Requesting camera permission...";
 
-  peers.set(
-    viewerId,
-    pc
-  );
-
-
-  /* =================================================
-     FRONT CAMERA
-  ================================================= */
-
-  if(frontStream){
-
-    frontStream
-      .getVideoTracks()
-      .forEach(track => {
-
-        const sender =
-          pc.addTrack(
-            track,
-            frontStream
-          );
-
-        console.log(
-          "Front track added",
-          sender
-        );
-
-      });
-
-  }
-
-
-  /* =================================================
-     BACK CAMERA
-  ================================================= */
-
-  if(backStream){
-
-    backStream
-      .getVideoTracks()
-      .forEach(track => {
-
-        const sender =
-          pc.addTrack(
-            track,
-            backStream
-          );
-
-        console.log(
-          "Back track added",
-          sender
-        );
-
-      });
-
-  }
-
-
-  /* =================================================
-     ICE
-  ================================================= */
-
-  pc.onicecandidate =
-    event => {
-
-      if(
-        !event.candidate ||
-        !ws ||
-        ws.readyState !== WebSocket.OPEN
-      ){
-        return;
-      }
-
-      ws.send(
-        JSON.stringify({
-
-          type:"candidate",
-
-          candidate:
-            event.candidate,
-
-          toViewerId:
-            viewerId
-
-        })
-      );
-
-    };
-
-
-  pc.onconnectionstatechange =
-    () => {
-
-      console.log(
-        "WebRTC:",
-        viewerId,
-        pc.connectionState
-      );
-
-      if(
-        pc.connectionState ===
-        "connected"
-      ){
-
-        status.textContent =
-          "🟢 Front + Back cameras LIVE";
-
-      }
-
-      if(
-        pc.connectionState ===
-        "failed"
-      ){
-
-        console.log(
-          "Peer connection failed"
-        );
-
-      }
-
-    };
-
-
-  /* =================================================
-     OFFER
-  ================================================= */
 
   try{
 
-    const offer =
-      await pc
+    /*
+      First request the front camera.
+      If Chrome already has permission,
+      this should start without another popup.
+    */
+
+    frontStream =
+      await navigator.mediaDevices.getUserMedia({
+
+        video:{
+          facingMode:"user"
+        },
+
+        audio:false
+
+      });
+
+
+    frontVideo.srcObject =
+      frontStream;
+
+    frontBox.classList.remove("hidden");
+
+
+    status.textContent =
+      "🟢 Front camera is active.";
+
+
+  }catch(error){
+
+    console.error(
+      "Front camera error:",
+      error
+    );
+
+    status.textContent =
+      "❌ Front camera could not be started: " +
+      error.name;
+
+    start.disabled = false;
+
+    return;
+
+  }
+
+
+  /*
+    Now request the rear camera.
+
+    Some Android phones do NOT support
+    simultaneous front + rear cameras.
+  */
+
+  try{
+
+    backStream =
+      await navigator.mediaDevices.getUserMedia({
+
+        video:{
+          facingMode:"environment"
+        },
+
+        audio:false
+
+      });
+
+
+    backVideo.srcObject =
+      backStream;
+
+    backBox.classList.remove("hidden");
+
+
+    status.textContent =
+      "🟢 Front and back cameras are active.";
+
+
+  }catch(error){
+
+    console.error(
+      "Back camera error:",
+      error
+    );
+
+    status.textContent =
+      "🟢 Front camera active. " +
+      "This phone/browser does not allow " +
+      "the back camera to run simultaneously.";
+
+  }
+
+};
+
+
+/* =====================================================
+   CLEANUP
+===================================================== */
+
+window.addEventListener(
+  "beforeunload",
+  () => {
+
+    if(frontStream){
+
+      frontStream
+        .getTracks()
+        .forEach(
+          track => track.stop()
+        );
+
+    }
+
+    if(backStream){
+
+      backStream
+        .getTracks()
+        .forEach(
+          track => track.stop()
+        );
+
+    }
+
+  }
+);
+
+</script>
+
+</body>
+</html>
