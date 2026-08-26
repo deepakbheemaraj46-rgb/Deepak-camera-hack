@@ -8,32 +8,51 @@ const PORT = process.env.PORT || 10000;
 const cameras = new Map();
 const viewers = new Map();
 
-const server = http.createServer((req, res) => {
-    let file;
+function send(ws, data) {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+        try {
+            ws.send(JSON.stringify(data));
+        } catch (err) {
+            console.error("Send error:", err.message);
+        }
+    }
+}
 
-    // ROOT = CAMERA PAGE
+const server = http.createServer((req, res) => {
+
+    let filename;
+
     if (req.url === "/" || req.url === "/camera.html") {
-        file = "camera.html";
+        filename = "camera.html";
     }
 
-    // VIEWER PAGE
     else if (req.url === "/viewer.html") {
-        file = "viewer.html";
+        filename = "viewer.html";
     }
 
     else {
-        res.writeHead(404);
+        res.writeHead(404, {
+            "Content-Type": "text/plain"
+        });
+
         res.end("Not found");
         return;
     }
 
-    const filePath = path.join(__dirname, file);
+    const filePath = path.join(__dirname, filename);
 
     fs.readFile(filePath, (err, data) => {
+
         if (err) {
-            console.error(err);
+
+            console.error(
+                "File error:",
+                err.message
+            );
+
             res.writeHead(500);
-            res.end("File error");
+            res.end("Server file error");
+
             return;
         }
 
@@ -46,77 +65,130 @@ const server = http.createServer((req, res) => {
     });
 });
 
-const wss = new WebSocket.Server({ server });
-
-function send(ws, data) {
-    if (ws && ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify(data));
-    }
-}
+const wss = new WebSocket.Server({
+    server
+});
 
 wss.on("connection", (ws) => {
+
     console.log("WebSocket connected");
 
     ws.role = null;
     ws.id = null;
 
     ws.on("message", (raw) => {
+
         let msg;
 
         try {
             msg = JSON.parse(raw.toString());
-        } catch {
+        }
+
+        catch {
+            console.log("Invalid JSON");
             return;
         }
 
-        // CAMERA REGISTER
+        /*
+        ==========================================
+        CAMERA REGISTER
+        ==========================================
+        */
+
         if (msg.type === "camera-register") {
+
             ws.role = "camera";
             ws.id = msg.cameraId;
 
-            cameras.set(ws.id, ws);
+            cameras.set(
+                ws.id,
+                ws
+            );
 
-            console.log("CAMERA ONLINE:", ws.id);
+            console.log(
+                "CAMERA ONLINE:",
+                ws.id
+            );
 
-            // Tell all viewers
+            /*
+            Tell every viewer
+            */
+
             for (const viewer of viewers.values()) {
+
                 send(viewer, {
                     type: "camera-online",
                     cameraId: ws.id
                 });
+
             }
 
             return;
         }
 
-        // VIEWER REGISTER
+
+        /*
+        ==========================================
+        VIEWER REGISTER
+        ==========================================
+        */
+
         if (msg.type === "viewer-register") {
+
             ws.role = "viewer";
             ws.id = msg.viewerId;
 
-            viewers.set(ws.id, ws);
+            viewers.set(
+                ws.id,
+                ws
+            );
 
-            console.log("VIEWER ONLINE:", ws.id);
+            console.log(
+                "VIEWER ONLINE:",
+                ws.id
+            );
 
-            // Tell viewer about all cameras
-            for (const cameraId of cameras.keys()) {
+            /*
+            Send all currently online cameras
+            */
+
+            for (
+                const cameraId
+                of cameras.keys()
+            ) {
+
                 send(ws, {
                     type: "camera-online",
-                    cameraId
+                    cameraId: cameraId
                 });
+
             }
 
             return;
         }
 
-        // VIEWER REQUESTS VIDEO
+
+        /*
+        ==========================================
+        VIEWER -> CAMERA
+        START VIEW
+        ==========================================
+        */
+
         if (msg.type === "start-view") {
-            const camera = cameras.get(msg.cameraId);
+
+            const camera =
+                cameras.get(
+                    msg.cameraId
+                );
 
             if (!camera) {
+
                 send(ws, {
-                    type: "camera-offline"
+                    type: "camera-offline",
+                    cameraId: msg.cameraId
                 });
+
                 return;
             }
 
@@ -128,11 +200,24 @@ wss.on("connection", (ws) => {
             return;
         }
 
-        // VIEWER WANTS FRONT/BACK
-        if (msg.type === "switch-camera") {
-            const camera = cameras.get(msg.cameraId);
 
-            if (!camera) return;
+        /*
+        ==========================================
+        VIEWER -> CAMERA
+        FRONT / BACK
+        ==========================================
+        */
+
+        if (msg.type === "switch-camera") {
+
+            const camera =
+                cameras.get(
+                    msg.cameraId
+                );
+
+            if (!camera) {
+                return;
+            }
 
             send(camera, {
                 type: "switch-camera",
@@ -143,29 +228,62 @@ wss.on("connection", (ws) => {
             return;
         }
 
-        // CAMERA OFFER -> VIEWER
-        if (msg.type === "offer") {
-            const viewer = viewers.get(msg.viewerId);
 
-            if (!viewer) return;
+        /*
+        ==========================================
+        CAMERA -> VIEWER
+        OFFER
+        ==========================================
+        */
+
+        if (msg.type === "offer") {
+
+            const viewer =
+                viewers.get(
+                    msg.viewerId
+                );
+
+            if (!viewer) {
+                console.log(
+                    "Viewer not found:",
+                    msg.viewerId
+                );
+
+                return;
+            }
 
             send(viewer, {
                 type: "offer",
                 cameraId: msg.cameraId,
+                viewerId: msg.viewerId,
                 offer: msg.offer
             });
 
             return;
         }
 
-        // VIEWER ANSWER -> CAMERA
-        if (msg.type === "answer") {
-            const camera = cameras.get(msg.cameraId);
 
-            if (!camera) return;
+        /*
+        ==========================================
+        VIEWER -> CAMERA
+        ANSWER
+        ==========================================
+        */
+
+        if (msg.type === "answer") {
+
+            const camera =
+                cameras.get(
+                    msg.cameraId
+                );
+
+            if (!camera) {
+                return;
+            }
 
             send(camera, {
                 type: "answer",
+                cameraId: msg.cameraId,
                 viewerId: msg.viewerId,
                 answer: msg.answer
             });
@@ -173,62 +291,76 @@ wss.on("connection", (ws) => {
             return;
         }
 
-        // ICE
+
+        /*
+        ==========================================
+        ICE CANDIDATE
+        ==========================================
+        */
+
         if (msg.type === "ice") {
 
-            // CAMERA -> VIEWER
-            if (ws.role === "camera") {
-                const viewer = viewers.get(msg.viewerId);
+            /*
+            CAMERA -> VIEWER
+            */
 
-                if (!viewer) return;
+            if (ws.role === "camera") {
+
+                const viewer =
+                    viewers.get(
+                        msg.viewerId
+                    );
+
+                if (!viewer) {
+                    return;
+                }
 
                 send(viewer, {
                     type: "ice",
                     cameraId: msg.cameraId,
-                    candidate: msg.candidate
-                });
-            }
-
-            // VIEWER -> CAMERA
-            else if (ws.role === "viewer") {
-                const camera = cameras.get(msg.cameraId);
-
-                if (!camera) return;
-
-                send(camera, {
-                    type: "ice",
                     viewerId: msg.viewerId,
                     candidate: msg.candidate
                 });
+
+                return;
             }
 
-            return;
+
+            /*
+            VIEWER -> CAMERA
+            */
+
+            if (ws.role === "viewer") {
+
+                const camera =
+                    cameras.get(
+                        msg.cameraId
+                    );
+
+                if (!camera) {
+                    return;
+                }
+
+                send(camera, {
+                    type: "ice",
+                    cameraId: msg.cameraId,
+                    viewerId: msg.viewerId,
+                    candidate: msg.candidate
+                });
+
+                return;
+            }
         }
+
     });
+
+
+    /*
+    ==========================================
+    CONNECTION CLOSED
+    ==========================================
+    */
 
     ws.on("close", () => {
 
-        if (ws.role === "camera") {
-            cameras.delete(ws.id);
-
-            console.log("CAMERA OFFLINE:", ws.id);
-
-            for (const viewer of viewers.values()) {
-                send(viewer, {
-                    type: "camera-offline",
-                    cameraId: ws.id
-                });
-            }
-        }
-
-        if (ws.role === "viewer") {
-            viewers.delete(ws.id);
-
-            console.log("VIEWER OFFLINE:", ws.id);
-        }
-    });
-});
-
-server.listen(PORT, () => {
-    console.log("Server running on port " + PORT);
-});
+        if (ws.role === "
