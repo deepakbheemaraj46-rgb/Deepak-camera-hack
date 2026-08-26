@@ -1,10 +1,11 @@
 <!doctype html>
+
 <html>
 
 <head>
 
 <meta name="viewport"
-      content="width=device-width,initial-scale=1">
+content="width=device-width,initial-scale=1">
 
 <title>Camera A</title>
 
@@ -18,63 +19,64 @@ html,
 body {
     margin: 0;
     padding: 0;
-    background: #111;
+    background: #0b0b0b;
     color: white;
     font-family: Arial, sans-serif;
 }
 
-.header {
+h1 {
     text-align: center;
-    padding: 18px;
-    font-size: 24px;
-    font-weight: bold;
+    margin: 18px 0 8px;
 }
 
 #status {
     text-align: center;
     color: #aaa;
-    padding: 5px 15px 15px;
+    margin: 10px;
 }
 
-#videoBox {
-    width: 100%;
-    max-width: 900px;
+.camera-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 15px;
+    padding: 12px;
+    max-width: 1000px;
     margin: auto;
-    background: #000;
+}
+
+.card {
+    background: #161616;
+    border-radius: 14px;
+    padding: 10px;
+}
+
+.card h2 {
+    text-align: center;
+    margin: 8px;
+    font-size: 20px;
 }
 
 video {
     width: 100%;
     aspect-ratio: 16 / 9;
-    display: block;
+    background: black;
     object-fit: contain;
-    background: #000;
-}
-
-.controls {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 10px;
-    padding: 10px;
-}
-
-button {
-    border: 0;
+    display: block;
     border-radius: 10px;
-    padding: 16px;
-    font-size: 17px;
-    color: white;
-    background: #333;
 }
 
-button:active {
-    background: #555;
-}
-
-#info {
+#details {
     text-align: center;
     color: #aaa;
     padding: 15px;
+}
+
+.ok {
+    color: #00e676 !important;
+}
+
+.error {
+    color: #ff5252 !important;
 }
 
 </style>
@@ -83,82 +85,87 @@ button:active {
 
 <body>
 
-<div class="header">
-    Camera A
-</div>
+<h1>Camera A</h1>
 
 <div id="status">
     Connecting...
 </div>
 
-<div id="videoBox">
+<div class="camera-grid">
 
-    <video
-        id="localVideo"
-        autoplay
-        muted
-        playsinline>
-    </video>
+    <div class="card">
+
+        <h2>
+            📷 FRONT CAMERA
+        </h2>
+
+        <video
+            id="frontVideo"
+            autoplay
+            muted
+            playsinline>
+        </video>
+
+    </div>
+
+
+    <div class="card">
+
+        <h2>
+            📷 BACK CAMERA
+        </h2>
+
+        <video
+            id="backVideo"
+            autoplay
+            muted
+            playsinline>
+        </video>
+
+    </div>
 
 </div>
 
-<div class="controls">
-
-    <button onclick="startCamera('user')">
-        📷 FRONT
-    </button>
-
-    <button onclick="startCamera('environment')">
-        🔄 BACK
-    </button>
-
-</div>
-
-<div id="info">
-    Camera permission is required.
+<div id="details">
+    Waiting for camera permission...
 </div>
 
 
 <script>
 
-// =====================================================
-// ELEMENTS
-// =====================================================
+const frontVideo =
+    document.getElementById(
+        "frontVideo"
+    );
 
-const video =
-    document.getElementById("localVideo");
+const backVideo =
+    document.getElementById(
+        "backVideo"
+    );
 
 const status =
-    document.getElementById("status");
+    document.getElementById(
+        "status"
+    );
 
-const info =
-    document.getElementById("info");
+const details =
+    document.getElementById(
+        "details"
+    );
 
-
-// =====================================================
-// WEBSOCKET
-// =====================================================
 
 const wsProtocol =
     location.protocol === "https:"
         ? "wss:"
         : "ws:";
 
+
 let ws;
 
+let frontStream = null;
+let backStream = null;
 
-// =====================================================
-// CAMERA
-// =====================================================
-
-let stream = null;
-
-let facingMode = "user";
-
-
-// =====================================================
-// CAMERA ID
-// =====================================================
+const peers = new Map();
 
 const cameraId =
     "camera-" +
@@ -167,30 +174,17 @@ const cameraId =
         .substring(2, 10);
 
 
-// =====================================================
-// PEERS
-// =====================================================
-
-const peers = new Map();
-
-
-// =====================================================
-// CONNECT
-// =====================================================
+// ====================================================
+// WEBSOCKET
+// ====================================================
 
 function connect() {
 
-    const wsUrl =
+    ws = new WebSocket(
         wsProtocol +
         "//" +
-        location.host;
-
-    console.log(
-        "Connecting:",
-        wsUrl
+        location.host
     );
-
-    ws = new WebSocket(wsUrl);
 
 
     ws.onopen = async () => {
@@ -212,9 +206,8 @@ function connect() {
         );
 
 
-        await startCamera(
-            facingMode
-        );
+        // Automatically start both
+        await startBothCameras();
 
     };
 
@@ -224,31 +217,24 @@ function connect() {
         let msg;
 
         try {
-
             msg =
                 JSON.parse(
                     event.data
                 );
-
         } catch {
-
             return;
-
         }
 
 
         console.log(
-            "Server message:",
+            "SERVER:",
             msg.type
         );
 
 
-        // =============================================
-        // VIEWER REQUESTED VIDEO
-        // =============================================
-
         if (
-            msg.type === "start-view"
+            msg.type ===
+            "start-view"
         ) {
 
             await createPeer(
@@ -258,12 +244,9 @@ function connect() {
         }
 
 
-        // =============================================
-        // ANSWER FROM VIEWER
-        // =============================================
-
         if (
-            msg.type === "answer"
+            msg.type ===
+            "answer"
         ) {
 
             await handleAnswer(
@@ -273,31 +256,13 @@ function connect() {
         }
 
 
-        // =============================================
-        // ICE FROM VIEWER
-        // =============================================
-
         if (
-            msg.type === "ice"
+            msg.type ===
+            "ice"
         ) {
 
             await handleIce(
                 msg
-            );
-
-        }
-
-
-        // =============================================
-        // REMOTE FRONT/BACK REQUEST
-        // =============================================
-
-        if (
-            msg.type === "switch-camera"
-        ) {
-
-            await startCamera(
-                msg.facing
             );
 
         }
@@ -317,217 +282,179 @@ function connect() {
 
     };
 
-
-    ws.onerror = () => {
-
-        status.textContent =
-            "Connection error";
-
-    };
-
 }
 
 
-// =====================================================
-// START CAMERA
-// =====================================================
+// ====================================================
+// START BOTH CAMERAS
+// ====================================================
 
-async function startCamera(
-    facing
-) {
+async function startBothCameras() {
+
+    status.textContent =
+        "Requesting FRONT camera...";
+
 
     try {
 
-        status.textContent =
-            facing === "user"
-                ? "Starting FRONT camera..."
-                : "Starting BACK camera...";
+        // FRONT
+        frontStream =
+            await navigator
+                .mediaDevices
+                .getUserMedia({
 
-
-        // Stop previous camera
-        if (stream) {
-
-            stream
-                .getTracks()
-                .forEach(
-                    track => track.stop()
-                );
-
-        }
-
-
-        // Try requested camera
-        try {
-
-            stream =
-                await navigator
-                    .mediaDevices
-                    .getUserMedia({
-
-                        video: {
-                            facingMode: {
-                                exact: facing
-                            },
-
-                            width: {
-                                ideal: 1280
-                            },
-
-                            height: {
-                                ideal: 720
-                            }
+                    video: {
+                        facingMode: {
+                            exact: "user"
                         },
 
-                        audio: false
-
-                    });
-
-        } catch {
-
-            // Fallback
-            stream =
-                await navigator
-                    .mediaDevices
-                    .getUserMedia({
-
-                        video: {
-                            facingMode: {
-                                ideal: facing
-                            },
-
-                            width: {
-                                ideal: 1280
-                            },
-
-                            height: {
-                                ideal: 720
-                            }
+                        width: {
+                            ideal: 1280
                         },
 
-                        audio: false
+                        height: {
+                            ideal: 720
+                        }
+                    },
 
-                    });
-
-        }
-
-
-        facingMode =
-            facing;
+                    audio: false
+                });
 
 
-        video.srcObject =
-            stream;
+        frontVideo.srcObject =
+            frontStream;
 
 
-        await video.play();
-
-
-        status.textContent =
-            facing === "user"
-                ? "FRONT CAMERA LIVE"
-                : "BACK CAMERA LIVE";
-
-
-        info.textContent =
-            "Camera A is ready for viewing";
+        await frontVideo.play();
 
 
         console.log(
-            "Camera started:",
-            facing
+            "FRONT CAMERA OK"
         );
 
 
-        // Replace track in existing connections
-        const newTrack =
-            stream.getVideoTracks()[0];
+        status.textContent =
+            "Front camera allowed. Requesting BACK...";
 
-
-        for (
-            const peer of peers.values()
-        ) {
-
-            const sender =
-                peer.pc
-                    .getSenders()
-                    .find(
-                        s =>
-                            s.track &&
-                            s.track.kind ===
-                            "video"
-                    );
-
-
-            if (
-                sender &&
-                newTrack
-            ) {
-
-                try {
-
-                    await sender.replaceTrack(
-                        newTrack
-                    );
-
-                } catch (error) {
-
-                    console.error(
-                        "replaceTrack:",
-                        error
-                    );
-
-                }
-
-            }
-
-        }
 
     } catch (error) {
 
         console.error(
-            "Camera error:",
+            "FRONT CAMERA ERROR:",
+            error
+        );
+
+        details.textContent =
+            "Front camera: " +
+            error.name +
+            " - " +
+            error.message;
+
+        status.className =
+            "error";
+
+        return;
+    }
+
+
+    // ================================================
+    // BACK CAMERA
+    // ================================================
+
+    try {
+
+        backStream =
+            await navigator
+                .mediaDevices
+                .getUserMedia({
+
+                    video: {
+                        facingMode: {
+                            exact: "environment"
+                        },
+
+                        width: {
+                            ideal: 1280
+                        },
+
+                        height: {
+                            ideal: 720
+                        }
+                    },
+
+                    audio: false
+                });
+
+
+        backVideo.srcObject =
+            backStream;
+
+
+        await backVideo.play();
+
+
+        console.log(
+            "BACK CAMERA OK"
+        );
+
+
+        status.textContent =
+            "🟢 FRONT + BACK CAMERAS LIVE";
+
+        status.className =
+            "ok";
+
+
+        details.textContent =
+            "Both cameras are active.";
+
+
+    } catch (error) {
+
+        console.error(
+            "BACK CAMERA ERROR:",
             error
         );
 
 
         status.textContent =
-            "Camera permission/error";
+            "FRONT camera is active";
 
 
-        info.textContent =
-            error.name +
-            ": " +
-            error.message;
+        details.textContent =
+            "Android/Chrome did not allow the BACK camera simultaneously. " +
+            error.name;
+
+
+        status.className =
+            "error";
 
     }
 
 }
 
 
-// =====================================================
-// CREATE PEER
-// =====================================================
+// ====================================================
+// CREATE WEBRTC CONNECTION
+// ====================================================
 
 async function createPeer(
     viewerId
 ) {
 
-    // Remove old peer
+    console.log(
+        "Creating peer for:",
+        viewerId
+    );
+
+
     if (peers.has(viewerId)) {
 
         try {
-
-            peers
-                .get(viewerId)
-                .pc
-                .close();
-
+            peers.get(viewerId).pc.close();
         } catch {}
 
-        peers.delete(
-            viewerId
-        );
-
+        peers.delete(viewerId);
     }
 
 
@@ -535,19 +462,17 @@ async function createPeer(
         new RTCPeerConnection({
 
             iceServers: [
-
                 {
                     urls:
                         "stun:stun.l.google.com:19302"
                 }
-
             ]
 
         });
 
 
     const peer = {
-        pc: pc,
+        pc,
         remoteDescriptionSet: false,
         iceQueue: []
     };
@@ -559,21 +484,25 @@ async function createPeer(
     );
 
 
-    // =================================================
-    // ADD VIDEO TRACK
-    // =================================================
+    // ================================================
+    // ADD FRONT TRACK
+    // ================================================
 
-    if (stream) {
+    if (frontStream) {
 
         const track =
-            stream.getVideoTracks()[0];
-
+            frontStream
+                .getVideoTracks()[0];
 
         if (track) {
 
             pc.addTrack(
                 track,
-                stream
+                frontStream
+            );
+
+            console.log(
+                "Added FRONT track"
             );
 
         }
@@ -581,9 +510,35 @@ async function createPeer(
     }
 
 
-    // =================================================
+    // ================================================
+    // ADD BACK TRACK
+    // ================================================
+
+    if (backStream) {
+
+        const track =
+            backStream
+                .getVideoTracks()[0];
+
+        if (track) {
+
+            pc.addTrack(
+                track,
+                backStream
+            );
+
+            console.log(
+                "Added BACK track"
+            );
+
+        }
+
+    }
+
+
+    // ================================================
     // ICE
-    // =================================================
+    // ================================================
 
     pc.onicecandidate =
         event => {
@@ -613,7 +568,7 @@ async function createPeer(
         () => {
 
             console.log(
-                "Camera ICE:",
+                "ICE:",
                 pc.iceConnectionState
             );
 
@@ -624,16 +579,16 @@ async function createPeer(
         () => {
 
             console.log(
-                "Camera WebRTC:",
+                "Connection:",
                 pc.connectionState
             );
 
         };
 
 
-    // =================================================
-    // CREATE OFFER
-    // =================================================
+    // ================================================
+    // OFFER
+    // ================================================
 
     try {
 
@@ -660,7 +615,7 @@ async function createPeer(
 
 
         console.log(
-            "Offer sent"
+            "OFFER SENT"
         );
 
     } catch (error) {
@@ -675,19 +630,16 @@ async function createPeer(
 }
 
 
-// =====================================================
+// ====================================================
 // ANSWER
-// =====================================================
+// ====================================================
 
-async function handleAnswer(
-    msg
-) {
+async function handleAnswer(msg) {
 
     const peer =
         peers.get(
             msg.viewerId
         );
-
 
     if (!peer) {
         return;
@@ -725,6 +677,7 @@ async function handleAnswer(
 
         peer.iceQueue = [];
 
+
     } catch (error) {
 
         console.error(
@@ -737,19 +690,16 @@ async function handleAnswer(
 }
 
 
-// =====================================================
+// ====================================================
 // ICE FROM VIEWER
-// =====================================================
+// ====================================================
 
-async function handleIce(
-    msg
-) {
+async function handleIce(msg) {
 
     const peer =
         peers.get(
             msg.viewerId
         );
-
 
     if (!peer) {
         return;
@@ -790,9 +740,9 @@ async function handleIce(
 }
 
 
-// =====================================================
+// ====================================================
 // SEND
-// =====================================================
+// ====================================================
 
 function send(data) {
 
@@ -811,9 +761,9 @@ function send(data) {
 }
 
 
-// =====================================================
+// ====================================================
 // START
-// =====================================================
+// ====================================================
 
 connect();
 
@@ -821,4 +771,4 @@ connect();
 
 </body>
 
-</html>
+      </html>
