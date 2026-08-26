@@ -3,22 +3,129 @@
 <head>
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Multi Camera Viewer</title>
+
 <style>
-body{margin:0;background:#111;color:#fff;font-family:Arial;text-align:center}
-h1{font-size:25px}
-#status{font-size:17px;margin:15px}
-#grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px;padding:12px}
-.card{background:#222;border-radius:10px;padding:8px}
-.card video{width:100%;background:#000;border-radius:8px}
-.label{font-size:14px;padding:6px;color:#ddd}
+body{
+  margin:0;
+  background:#111;
+  color:#fff;
+  font-family:Arial;
+  text-align:center;
+}
+
+h1{
+  font-size:25px;
+  margin:20px 0 10px;
+}
+
+#status{
+  font-size:17px;
+  margin:15px;
+}
+
+#grid{
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(280px,1fr));
+  gap:12px;
+  padding:12px;
+}
+
+.card{
+  background:#222;
+  border-radius:10px;
+  padding:8px;
+  position:relative;
+}
+
+.label{
+  font-size:14px;
+  padding:6px;
+  color:#ddd;
+}
+
+/* Video area */
+.video-container{
+  position:relative;
+  width:100%;
+  background:#000;
+  border-radius:8px;
+  overflow:hidden;
+}
+
+.video-container video{
+  display:block;
+  width:100%;
+  background:#000;
+  min-height:180px;
+  object-fit:contain;
+}
+
+/* Full screen button */
+.fullscreen-btn{
+  position:absolute;
+  right:10px;
+  bottom:10px;
+
+  width:45px;
+  height:45px;
+
+  border:none;
+  border-radius:8px;
+
+  background:rgba(0,0,0,0.75);
+  color:white;
+
+  font-size:24px;
+  cursor:pointer;
+
+  z-index:10;
+}
+
+.fullscreen-btn:hover{
+  background:rgba(40,40,40,0.95);
+}
+
+/* Full-screen video container */
+.video-container:fullscreen{
+  width:100vw;
+  height:100vh;
+  background:#000;
+
+  display:flex;
+  align-items:center;
+  justify-content:center;
+}
+
+.video-container:fullscreen video{
+  width:100vw;
+  height:100vh;
+  object-fit:contain;
+  min-height:0;
+  border-radius:0;
+}
+
+/* Keep button visible in fullscreen */
+.video-container:fullscreen .fullscreen-btn{
+  right:20px;
+  bottom:20px;
+  width:55px;
+  height:55px;
+  font-size:28px;
+}
 </style>
 </head>
+
 <body>
+
 <h1>👁️ Live Camera Viewer</h1>
+
 <div id="status">Connecting...</div>
+
 <div id="grid"></div>
 
+
 <script>
+
 const status = document.getElementById("status");
 const grid = document.getElementById("grid");
 
@@ -31,153 +138,82 @@ const peers = new Map();
 const pendingCandidates = new Map();
 const cards = new Map();
 
-function addCamera(cameraId) {
-  if (cards.has(cameraId)) return;
+
+/* ==========================================
+   ADD CAMERA
+========================================== */
+
+function addCamera(cameraId){
+
+  if(cards.has(cameraId)) return;
+
+
+  /* Camera card */
 
   const card = document.createElement("div");
   card.className = "card";
   card.id = "card-" + cameraId;
 
+
+  /* Camera name */
+
   const label = document.createElement("div");
   label.className = "label";
-  label.textContent = "Camera " + cameraId;
+  label.textContent = "📹 Camera " + cameraId;
+
+
+  /* Video container */
+
+  const videoContainer = document.createElement("div");
+  videoContainer.className = "video-container";
+
+
+  /* Video */
 
   const video = document.createElement("video");
+
   video.autoplay = true;
   video.playsInline = true;
   video.muted = true;
 
-  card.appendChild(label);
-  card.appendChild(video);
-  grid.appendChild(card);
 
-  cards.set(cameraId, { card, video });
-}
+  /* ==========================================
+     FULL SCREEN BUTTON
+  ========================================== */
 
-function removeCamera(cameraId) {
-  const pc = peers.get(cameraId);
-  if (pc) pc.close();
+  const fullscreenBtn = document.createElement("button");
 
-  peers.delete(cameraId);
-  pendingCandidates.delete(cameraId);
+  fullscreenBtn.className = "fullscreen-btn";
 
-  const item = cards.get(cameraId);
-  if (item) item.card.remove();
+  fullscreenBtn.innerHTML = "⛶";
 
-  cards.delete(cameraId);
-}
+  fullscreenBtn.title = "Full Screen";
 
-function startPeer(cameraId) {
-  if (peers.has(cameraId)) return;
 
-  addCamera(cameraId);
+  fullscreenBtn.onclick = async function(){
 
-  const pc = new RTCPeerConnection({
-    iceServers: [{ urls: "stun:stun.l.google.com:19302" }]
-  });
+    try{
 
-  peers.set(cameraId, pc);
-  pendingCandidates.set(cameraId, []);
+      if(!document.fullscreenElement){
 
-  pc.onicecandidate = e => {
-    if (e.candidate) {
-      ws.send(JSON.stringify({
-        type: "candidate",
-        candidate: e.candidate,
-        cameraId
-      }));
-    }
-  };
+        await videoContainer.requestFullscreen();
 
-  pc.ontrack = e => {
-    const item = cards.get(cameraId);
-    if (item) {
-      item.video.srcObject = e.streams[0];
-      item.video.play().catch(() => {});
-    }
-  };
+        fullscreenBtn.innerHTML = "✕";
+        fullscreenBtn.title = "Exit Full Screen";
 
-  ws.send(JSON.stringify({
-    type: "viewer-ready",
-    cameraId
-  }));
-}
-
-ws.onmessage = async e => {
-  const m = JSON.parse(e.data);
-
-  if (m.type === "role") {
-    status.textContent = "🟡 Waiting for cameras...";
-
-    if (Array.isArray(m.cameras)) {
-      m.cameras.forEach(startPeer);
-    }
-  }
-
-  if (m.type === "camera-online") {
-    startPeer(m.cameraId);
-    status.textContent = "🟢 Camera connected";
-  }
-
-  if (m.type === "camera-live") {
-    addCamera(m.cameraId);
-    status.textContent = "🟢 Camera is LIVE";
-  }
-
-  if (m.type === "camera-offline") {
-    removeCamera(m.cameraId);
-
-    if (peers.size === 0) {
-      status.textContent = "🔴 No cameras connected";
-    }
-  }
-
-  if (m.type === "offer") {
-    const cameraId = m.cameraId;
-
-    if (!peers.has(cameraId)) {
-      startPeer(cameraId);
-    }
-
-    const pc = peers.get(cameraId);
-    await pc.setRemoteDescription(m.offer);
-
-    const queued = pendingCandidates.get(cameraId) || [];
-    for (const c of queued) {
-      await pc.addIceCandidate(c).catch(() => {});
-    }
-    pendingCandidates.set(cameraId, []);
-
-    const answer = await pc.createAnswer();
-    await pc.setLocalDescription(answer);
-
-    ws.send(JSON.stringify({
-      type: "answer",
-      answer: pc.localDescription,
-      cameraId
-    }));
-  }
-
-  if (m.type === "candidate") {
-    const cameraId = m.cameraId;
-    const pc = peers.get(cameraId);
-
-    if (!pc) return;
-
-    if (pc.remoteDescription) {
-      await pc.addIceCandidate(m.candidate).catch(() => {});
-    } else {
-      if (!pendingCandidates.has(cameraId)) {
-        pendingCandidates.set(cameraId, []);
       }
-      pendingCandidates.get(cameraId).push(m.candidate);
-    }
-  }
-};
+      else{
 
-ws.onclose = () => {
-  status.textContent = "🔴 Viewer connection closed";
-};
-</script>
-</body>
-</html>
+        await document.exitFullscreen();
+
+      }
+
+    }
+    catch(error){
+
+      console.log(
+        "Fullscreen error:",
+        error
+      );
+
+   
