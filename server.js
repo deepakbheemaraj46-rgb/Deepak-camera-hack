@@ -5,39 +5,66 @@ const https = require("https");
 const WebSocket = require("ws");
 
 const PORT = process.env.PORT || 10000;
-const TELEGRAM_BOT_TOKEN =
-  process.env.TELEGRAM_BOT_TOKEN || "";
-const TELEGRAM_CHAT_ID =
-  process.env.TELEGRAM_CHAT_ID || "";
+
+/*
+  Mobile notification settings.
+
+  Set NTFY_TOPIC in your hosting environment.
+  Example:
+  NTFY_TOPIC=your-private-random-topic
+*/
+
+const NTFY_TOPIC =
+  process.env.NTFY_TOPIC || "";
 
 
-function telegram(message) {
+/* =========================================
+   MOBILE NOTIFICATION
+========================================= */
 
-  if (
-    !TELEGRAM_BOT_TOKEN ||
-    !TELEGRAM_CHAT_ID
-  ) {
+function mobileNotification(message) {
+
+  if (!NTFY_TOPIC) {
+
+    console.log(
+      "NTFY_TOPIC is not configured"
+    );
+
     return;
+
   }
 
-  const data = new URLSearchParams({
-    chat_id: TELEGRAM_CHAT_ID,
-    text: message
-  }).toString();
+
+  const data = JSON.stringify({
+
+    topic: NTFY_TOPIC,
+
+    title:
+      "Camera Notification",
+
+    message,
+
+    priority:
+      "high"
+
+  });
+
 
   const req = https.request({
 
-    hostname: "api.telegram.org",
+    hostname:
+      "ntfy.sh",
 
     path:
-      `/bot${TELEGRAM_BOT_TOKEN}/sendMessage`,
+      "/",
 
-    method: "POST",
+    method:
+      "POST",
 
     headers: {
 
       "Content-Type":
-        "application/x-www-form-urlencoded",
+        "application/json",
 
       "Content-Length":
         Buffer.byteLength(data)
@@ -46,7 +73,19 @@ function telegram(message) {
 
   });
 
-  req.on("error", () => {});
+
+  req.on(
+    "error",
+    error => {
+
+      console.error(
+        "Mobile notification error:",
+        error.message
+      );
+
+    }
+  );
+
 
   req.write(data);
 
@@ -54,6 +93,10 @@ function telegram(message) {
 
 }
 
+
+/* =========================================
+   SEND WEBSOCKET MESSAGE
+========================================= */
 
 function send(ws, message) {
 
@@ -71,23 +114,37 @@ function send(ws, message) {
 }
 
 
+/* =========================================
+   CREATE ID
+========================================= */
+
 function makeId() {
 
   return (
+
     Math.random()
       .toString(36)
       .slice(2, 8)
+
     +
+
     Date.now()
       .toString(36)
       .slice(-4)
+
   );
 
 }
 
 
+/* =========================================
+   HTTP SERVER
+========================================= */
+
 const server = http.createServer(
+
   (req, res) => {
+
 
     const routes = {
 
@@ -111,8 +168,11 @@ const server = http.createServer(
 
     const pathname =
       new URL(
+
         req.url,
+
         `http://${req.headers.host || "localhost"}`
+
       ).pathname;
 
 
@@ -131,25 +191,15 @@ const server = http.createServer(
     }
 
 
-    if (
-      pathname === "/camera" ||
-      pathname === "/camera.html"
-    ) {
-
-      telegram(
-        "🔔 Someone opened the camera page.\n" +
-        "Camera permission is still required."
-      );
-
-    }
-
-
     fs.readFile(
+
       path.join(
         __dirname,
         file
       ),
+
       (err, data) => {
+
 
         if (err) {
 
@@ -163,26 +213,39 @@ const server = http.createServer(
 
 
         res.writeHead(
+
           200,
+
           {
+
             "Content-Type":
               "text/html; charset=utf-8"
+
           }
+
         );
 
 
         res.end(data);
 
       }
+
     );
 
   }
+
 );
 
 
+/* =========================================
+   WEBSOCKET SERVER
+========================================= */
+
 const wss =
   new WebSocket.Server({
+
     server
+
   });
 
 
@@ -196,21 +259,34 @@ const viewers =
 
 
 wss.on(
+
   "connection",
+
   (ws, req) => {
 
+
     const pathname =
+
       new URL(
+
         req.url,
+
         "http://localhost"
+
       ).pathname;
 
 
-    // Only accept these WebSocket paths
+    /*
+      Only accept camera
+      and viewer connections.
+    */
 
     if (
+
       pathname !== "/camera" &&
+
       pathname !== "/viewer"
+
     ) {
 
       ws.close();
@@ -221,60 +297,83 @@ wss.on(
 
 
     const role =
+
       pathname === "/camera"
+
         ? "camera"
+
         : "viewer";
 
 
-    // =========================
-    // CAMERA
-    // =========================
+
+    /* =====================================
+       CAMERA
+    ===================================== */
 
     if (
+
       role === "camera"
+
     ) {
+
 
       const cameraId =
         makeId();
 
 
       cameras.set(
+
         cameraId,
+
         ws
+
       );
 
 
-      // Store whether the browser
-      // has actually granted camera access
+      /*
+        Camera permission
+        has not been granted yet.
+      */
 
       ws.cameraLive =
         false;
 
 
       send(
+
         ws,
+
         {
 
-          type: "role",
+          type:
+            "role",
 
-          role: "camera",
+          role:
+            "camera",
 
           cameraId
 
         }
+
       );
 
 
-      // Tell current viewers
-      // that the camera page exists
+      /*
+        Tell existing viewers
+        that a camera page exists.
+      */
 
       for (
+
         const viewer
         of viewers.values()
+
       ) {
 
         send(
+
           viewer,
+
           {
 
             type:
@@ -283,21 +382,27 @@ wss.on(
             cameraId
 
           }
+
         );
 
       }
 
 
-      telegram(
-        `📷 Camera page connected.\n` +
-        `Camera ID: ${cameraId}\n` +
-        `The user must still allow camera access.`
-      );
+      /*
+        No notification here.
+
+        Opening the page does not
+        mean camera permission
+        has been granted.
+      */
 
 
       ws.on(
+
         "message",
+
         raw => {
+
 
           let msg;
 
@@ -318,17 +423,18 @@ wss.on(
           }
 
 
-          // =========================
-          // CAMERA IS NOW LIVE
-          // =========================
+
+          /* =========================
+             CAMERA IS NOW LIVE
+          ========================= */
 
           if (
+
             msg.type ===
             "camera-live"
+
           ) {
 
-            // Prevent duplicate
-            // live announcements
 
             const wasAlreadyLive =
               ws.cameraLive;
@@ -338,33 +444,53 @@ wss.on(
               true;
 
 
+            /*
+              Send mobile notification
+              only the first time the
+              camera becomes live.
+            */
+
             if (
+
               !wasAlreadyLive
+
             ) {
 
-              telegram(
+              mobileNotification(
+
                 `🟢 Camera permission was granted.\n` +
+
                 `Camera ID: ${cameraId}`
+
               );
 
             }
 
 
-            // Tell every viewer that
-            // this camera now has a stream.
-            // Then ask the camera to create
-            // a fresh WebRTC offer for that viewer.
+            /*
+              Tell every viewer that
+              this camera now has a stream.
+            */
 
             for (
+
               const [
+
                 viewerId,
+
                 viewer
+
               ]
+
               of viewers.entries()
+
             ) {
 
+
               send(
+
                 viewer,
+
                 {
 
                   type:
@@ -373,16 +499,19 @@ wss.on(
                   cameraId
 
                 }
+
               );
 
 
-              // CRITICAL FIX:
-              // Camera permission may have
-              // been granted after viewer-ready.
-              // Trigger a new offer now.
+              /*
+                Ask the camera to create
+                a fresh WebRTC offer.
+              */
 
               send(
+
                 ws,
+
                 {
 
                   type:
@@ -391,6 +520,7 @@ wss.on(
                   viewerId
 
                 }
+
               );
 
             }
@@ -401,14 +531,18 @@ wss.on(
           }
 
 
-          // =========================
-          // CAMERA -> VIEWER
-          // Offer / ICE candidates
-          // =========================
+
+          /* =========================
+             CAMERA -> VIEWER
+             OFFER / ICE
+          ========================= */
 
           if (
+
             msg.toViewerId
+
           ) {
+
 
             const viewer =
               viewers.get(
@@ -419,7 +553,9 @@ wss.on(
             if (viewer) {
 
               send(
+
                 viewer,
+
                 {
 
                   ...msg,
@@ -427,6 +563,7 @@ wss.on(
                   cameraId
 
                 }
+
               );
 
             }
@@ -437,31 +574,52 @@ wss.on(
           }
 
         }
+
       );
 
 
+
+      /* =================================
+         CAMERA DISCONNECTED
+      ================================= */
+
       ws.on(
+
         "close",
+
         () => {
 
+
           if (
+
             cameras.get(
               cameraId
             ) === ws
+
           ) {
+
 
             cameras.delete(
               cameraId
             );
 
 
+            /*
+              Tell viewers that
+              this camera is offline.
+            */
+
             for (
+
               const viewer
               of viewers.values()
+
             ) {
 
               send(
+
                 viewer,
+
                 {
 
                   type:
@@ -470,19 +628,28 @@ wss.on(
                   cameraId
 
                 }
+
               );
 
             }
 
 
-            telegram(
+            /*
+              Optional mobile notification.
+            */
+
+            mobileNotification(
+
               `🔴 Camera disconnected.\n` +
+
               `Camera ID: ${cameraId}`
+
             );
 
           }
 
         }
+
       );
 
 
@@ -498,55 +665,78 @@ wss.on(
 
 
 
-    // =========================
-    // VIEWER
-    // =========================
+    /* =====================================
+       VIEWER
+    ===================================== */
 
     const viewerId =
       makeId();
 
 
     viewers.set(
+
       viewerId,
+
       ws
+
     );
 
 
-    // Give viewer its ID
-    // and current camera list
+    /*
+      Give viewer its ID
+      and current camera list.
+    */
 
     send(
+
       ws,
+
       {
 
-        type: "role",
+        type:
+          "role",
 
-        role: "viewer",
+        role:
+          "viewer",
 
         viewerId,
 
         cameras:
           [
+
             ...cameras.keys()
+
           ]
 
       }
+
     );
 
 
-    // Announce every existing
-    // camera to the viewer
+    /*
+      Announce every existing
+      camera to the viewer.
+    */
 
     for (
+
       const [
+
         cameraId,
+
         camera
+
       ]
+
       of cameras.entries()
+
     ) {
 
+
       send(
+
         ws,
+
         {
 
           type:
@@ -555,19 +745,26 @@ wss.on(
           cameraId
 
         }
+
       );
 
 
-      // If camera permission was
-      // already granted, notify
-      // the viewer that it is live
+      /*
+        If camera permission
+        was already granted,
+        notify the viewer.
+      */
 
       if (
+
         camera.cameraLive
+
       ) {
 
         send(
+
           ws,
+
           {
 
             type:
@@ -576,6 +773,7 @@ wss.on(
             cameraId
 
           }
+
         );
 
       }
@@ -583,9 +781,13 @@ wss.on(
     }
 
 
+
     ws.on(
+
       "message",
+
       raw => {
+
 
         let msg;
 
@@ -606,15 +808,20 @@ wss.on(
         }
 
 
-        // =========================
-        // VIEWER WANTS CAMERA VIDEO
-        // =========================
+
+        /* =========================
+           VIEWER WANTS CAMERA VIDEO
+        ========================= */
 
         if (
+
           msg.type ===
-          "viewer-ready" &&
+            "viewer-ready" &&
+
           msg.cameraId
+
         ) {
+
 
           const camera =
             cameras.get(
@@ -624,12 +831,10 @@ wss.on(
 
           if (camera) {
 
-            // Send viewer ID to camera.
-            // Camera page will create
-            // an offer if the stream exists.
-
             send(
+
               camera,
+
               {
 
                 type:
@@ -638,6 +843,7 @@ wss.on(
                 viewerId
 
               }
+
             );
 
           }
@@ -648,14 +854,18 @@ wss.on(
         }
 
 
-        // =========================
-        // VIEWER -> CAMERA
-        // Answer / ICE candidates
-        // =========================
+
+        /* =========================
+           VIEWER -> CAMERA
+           ANSWER / ICE
+        ========================= */
 
         if (
+
           msg.cameraId
+
         ) {
+
 
           const camera =
             cameras.get(
@@ -666,7 +876,9 @@ wss.on(
           if (camera) {
 
             send(
+
               camera,
+
               {
 
                 ...msg,
@@ -675,6 +887,7 @@ wss.on(
                   viewerId
 
               }
+
             );
 
           }
@@ -685,11 +898,19 @@ wss.on(
         }
 
       }
+
     );
 
 
+
+    /* =================================
+       VIEWER DISCONNECTED
+    ================================= */
+
     ws.on(
+
       "close",
+
       () => {
 
         viewers.delete(
@@ -697,6 +918,7 @@ wss.on(
         );
 
       }
+
     );
 
 
@@ -706,17 +928,29 @@ wss.on(
     );
 
   }
+
 );
 
 
+
+/* =========================================
+   START SERVER
+========================================= */
+
 server.listen(
+
   PORT,
+
   "0.0.0.0",
+
   () => {
 
     console.log(
+
       `Multi-camera server running on port ${PORT}`
+
     );
 
   }
+
 );
