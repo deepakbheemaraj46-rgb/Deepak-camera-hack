@@ -1402,5 +1402,120 @@ function connectWebSocket() {
 
 
           pendingCandidates
-            .get(viewerId)
-            .push(
+  .get(viewerId)
+  .push(message.candidate);
+
+        }
+
+        return;
+
+      }
+
+    };
+
+  socket.onclose =
+    () => {
+
+      console.log(
+        "Camera WebSocket closed"
+      );
+
+      if (ws === socket) {
+        ws = null;
+      }
+
+      roleReceived = false;
+
+      if (!pageUnloading && !intentionallyClosed) {
+
+        status.textContent =
+          "Connection closed. Reconnecting...";
+
+        clearTimeout(reconnectTimer);
+
+        reconnectAttempt++;
+
+        const delay =
+          Math.min(
+            1000 * Math.pow(2, reconnectAttempt - 1),
+            10000
+          );
+
+        reconnectTimer =
+          setTimeout(
+            connectWebSocket,
+            delay
+          );
+
+      }
+
+    };
+
+
+  socket.onerror =
+    error => {
+
+      console.error(
+        "WebSocket error:",
+        error
+      );
+
+    };
+
+}
+
+
+/* =========================================
+   START WEBSOCKET
+========================================= */
+
+connectWebSocket();
+
+
+/* =========================================
+   PAGE CLOSE
+========================================= */
+
+window.addEventListener(
+  "beforeunload",
+  () => {
+
+    pageUnloading = true;
+
+    intentionallyClosed = true;
+
+    clearTimeout(
+      reconnectTimer
+    );
+
+    closeAllPeers();
+
+    if (stream) {
+
+      stream
+        .getTracks()
+        .forEach(
+          track => track.stop()
+        );
+
+      stream = null;
+
+    }
+
+    if (ws) {
+
+      try {
+        ws.close();
+      }
+
+      catch (error) {}
+
+    }
+
+  }
+);
+
+</script>
+
+</body>
+</html>
