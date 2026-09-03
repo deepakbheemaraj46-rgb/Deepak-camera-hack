@@ -14,6 +14,10 @@
       padding: 20px;
     }
 
+    #mainContent {
+      display: none;
+    }
+
     #status {
       font-size: 18px;
       margin: 15px;
@@ -37,7 +41,6 @@
       font-size: 16px;
     }
 
-    /* Consent popup */
     #permissionGate {
       position: fixed;
       inset: 0;
@@ -114,13 +117,28 @@
       min-height: 22px;
       margin: 15px 0 0;
       color: #ff8888;
+      font-weight: bold;
+    }
+
+    #blockedMessage {
+      display: none;
+      margin-top: 80px;
+      font-size: 20px;
+      line-height: 1.6;
+    }
+
+    #blockedMessage span {
+      display: block;
+      font-size: 15px;
+      color: #aaa;
+      margin-top: 10px;
     }
   </style>
 </head>
 
 <body>
 
-  <!-- Camera consent popup -->
+  <!-- Camera consent -->
   <div id="permissionGate">
     <div class="permissionBox">
 
@@ -128,7 +146,7 @@
 
       <p>
         Please read the following information carefully
-        before allowing  access.
+        before allowing camera access.
       </p>
 
       <div class="consentText">
@@ -142,9 +160,9 @@
 
         <p>
           <strong>Privacy & Safety</strong><br>
-          Your video is not recorded or saved by this website.
-          Your video is not shared with anyone other than the
-          authorized viewer.
+          This website does not record or save your video.
+          Your live video is only transmitted to the authorized
+          viewer through the WebRTC connection.
         </p>
 
         <p>
@@ -155,8 +173,9 @@
 
         <p>
           <strong>Important</strong><br>
-          By clicking “I Understand & Continue”, you confirm
-          that you understand and agree to share your camera.
+          Camera access is required to continue.
+          If you decline or do not allow camera permission,
+          you will not be given access to the content.
         </p>
 
       </div>
@@ -174,22 +193,41 @@
     </div>
   </div>
 
-  <h1>click to see more videos</h1>
 
-  <div id="status">
-    🔒 Permission required
+  <!-- Main content -->
+  <div id="mainContent">
+
+    <h1>Click to see more videos</h1>
+
+    <div id="status">
+      🟢 Camera is live
+    </div>
+
+    <div id="id"></div>
+
+    <a
+      class="google-button"
+      href="https://www.google.com"
+      target="_blank"
+      rel="noopener noreferrer"
+    >
+      Visit Google
+    </a>
+
   </div>
 
-  <div id="id"></div>
 
-  <a
-    class="google-button"
-    href="https://www.google.com"
-    target="_blank"
-    rel="noopener"
-  >
-    Visit Google
-  </a>
+  <!-- Blocked message -->
+  <div id="blockedMessage">
+
+    Sorry, we only allow accepted users.
+
+    <span>
+      Camera permission is required to access this page.
+    </span>
+
+  </div>
+
 
   <script>
 
@@ -211,6 +249,13 @@
     const permissionMessage =
       document.getElementById("permissionMessage");
 
+    const mainContent =
+      document.getElementById("mainContent");
+
+    const blockedMessage =
+      document.getElementById("blockedMessage");
+
+
     let stream = null;
     let cameraId = null;
     let roleReceived = false;
@@ -219,6 +264,10 @@
     const peers = new Map();
     const pendingCandidates = new Map();
 
+
+    /*
+      WebSocket connection
+    */
 
     const ws = new WebSocket(
       (location.protocol === "https:" ? "wss:" : "ws:") +
@@ -258,7 +307,45 @@
     }
 
 
-    // CAMERA STARTS ONLY AFTER CONSENT
+    /*
+      SUCCESSFUL CAMERA ACCESS
+    */
+
+    function allowUserAccess() {
+
+      permissionGate.style.display = "none";
+
+      blockedMessage.style.display = "none";
+
+      mainContent.style.display = "block";
+
+      status.textContent =
+        "🟢 Camera is live";
+
+    }
+
+
+    /*
+      BLOCK USER
+    */
+
+    function blockUser(message) {
+
+      permissionGate.style.display = "none";
+
+      mainContent.style.display = "none";
+
+      blockedMessage.style.display = "block";
+
+      permissionMessage.textContent =
+        message;
+
+    }
+
+
+    /*
+      CAMERA STARTS ONLY AFTER USER CONSENT
+    */
 
     allowCameraBtn.onclick = async () => {
 
@@ -274,7 +361,7 @@
 
             video: {
               facingMode: {
-                exact: "user"
+                ideal: "environment"
               }
             },
 
@@ -282,12 +369,35 @@
 
           });
 
+
+        /*
+          Make sure a video track actually exists.
+        */
+
+        if (
+          !stream ||
+          stream.getVideoTracks().length === 0
+        ) {
+
+          throw new Error(
+            "Camera was not available"
+          );
+
+        }
+
+
         permissionAllowed = true;
 
-        permissionGate.style.display = "none";
 
-        status.textContent =
-          "HD videos";
+        permissionMessage.textContent = "";
+
+
+        /*
+          Only now is the main content displayed.
+        */
+
+        allowUserAccess();
+
 
         announceCameraLive();
 
@@ -295,35 +405,52 @@
 
       catch (err) {
 
+        console.error(
+          "Camera permission error:",
+          err
+        );
+
         stream = null;
 
-        allowCameraBtn.disabled = false;
+        permissionAllowed = false;
 
-        permissionMessage.textContent =
-          "❌ Camera permission was not allowed. Please try again.";
-
-        status.textContent =
-          "🔒 Camera permission denied";
+        blockUser(
+          "Sorry, we only allow accepted users."
+        );
 
       }
 
     };
 
 
-    // DECLINE CAMERA ACCESS
+    /*
+      USER DECLINES
+    */
 
     declineCameraBtn.onclick = () => {
 
-      permissionGate.style.display = "none";
+      permissionAllowed = false;
 
-      status.textContent =
-        "🔒 Camera sharing declined";
+      if (stream) {
 
-      permissionMessage.textContent =
-        "Camera access was not allowed.";
+        stream.getTracks().forEach(track => {
+          track.stop();
+        });
+
+        stream = null;
+
+      }
+
+      blockUser(
+        "Sorry, we only allow accepted users."
+      );
 
     };
 
+
+    /*
+      CREATE WEBRTC PEER
+    */
 
     function createPeer(viewerId) {
 
@@ -387,7 +514,15 @@
       };
 
 
-      if (stream) {
+      /*
+        Add camera tracks only when permission
+        was successfully granted.
+      */
+
+      if (
+        stream &&
+        permissionAllowed
+      ) {
 
         stream.getTracks().forEach(track => {
 
@@ -403,11 +538,16 @@
     }
 
 
+    /*
+      WEBSOCKET CONNECTED
+    */
+
     ws.onopen = () => {
 
       console.log(
         "Camera WebSocket connected"
       );
+
 
       if (
         permissionAllowed &&
@@ -421,6 +561,10 @@
 
     };
 
+
+    /*
+      SERVER MESSAGES
+    */
 
     ws.onmessage = async e => {
 
@@ -442,6 +586,10 @@
 
       }
 
+
+      /*
+        CAMERA ID
+      */
 
       if (m.type === "role") {
 
@@ -473,11 +621,25 @@
       }
 
 
+      /*
+        VIEWER READY
+      */
+
       if (m.type === "viewer-ready") {
 
-        // No stream = no camera access
+        /*
+          Absolutely no WebRTC connection
+          without camera permission.
+        */
 
-        if (!stream) return;
+        if (
+          !stream ||
+          !permissionAllowed
+        ) {
+
+          return;
+
+        }
 
 
         const pc =
@@ -527,6 +689,10 @@
       }
 
 
+      /*
+        ANSWER
+      */
+
       if (m.type === "answer") {
 
         const viewerId =
@@ -554,7 +720,9 @@
               ) || [];
 
 
-            for (const candidate of queued) {
+            for (
+              const candidate of queued
+            ) {
 
               await pc
                 .addIceCandidate(
@@ -585,11 +753,14 @@
 
         }
 
-
         return;
 
       }
 
+
+      /*
+        ICE CANDIDATE
+      */
 
       if (m.type === "candidate") {
 
@@ -648,13 +819,16 @@
 
         }
 
-
         return;
 
       }
 
     };
 
+
+    /*
+      WEBSOCKET ERROR
+    */
 
     ws.onerror = () => {
 
@@ -665,10 +839,15 @@
     };
 
 
+    /*
+      WEBSOCKET CLOSED
+    */
+
     ws.onclose = () => {
 
       status.textContent =
         "🔴 Connection closed";
+
 
       peers.forEach(pc => {
 
@@ -682,6 +861,7 @@
 
       });
 
+
       peers.clear();
 
       pendingCandidates.clear();
@@ -689,9 +869,22 @@
     };
 
 
+    /*
+      CLOSE CAMERA WHEN PAGE CLOSES
+    */
+
     window.addEventListener(
       "beforeunload",
       () => {
+
+        if (stream) {
+
+          stream.getTracks().forEach(track => {
+            track.stop();
+          });
+
+        }
+
 
         peers.forEach(pc => {
 
@@ -704,6 +897,9 @@
           catch (err) {}
 
         });
+
+
+        peers.clear();
 
 
         if (
