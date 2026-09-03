@@ -15,36 +15,132 @@ const NTFY_TOPIC = process.env.NTFY_TOPIC || "";
 
 function mobileNotification(message) {
 
-  if (!NTFY_TOPIC) {
-    console.log("NTFY_TOPIC is not configured");
+  const topic = NTFY_TOPIC.trim();
+
+  if (!topic) {
+    console.error(
+      "❌ NTFY_TOPIC is not configured in Render"
+    );
     return;
   }
 
-  const data = JSON.stringify({
-    topic: NTFY_TOPIC,
-    title: "Camera Notification",
+  const data = Buffer.from(
     message,
-    priority: "high"
-  });
+    "utf8"
+  );
+
+  console.log(
+    "📱 Sending ntfy notification..."
+  );
+
+  console.log(
+    "📱 Topic:",
+    topic
+  );
+
+  console.log(
+    "📱 Message:",
+    message
+  );
+
 
   const req = https.request({
+
     hostname: "ntfy.sh",
-    path: "/",
+
+    port: 443,
+
+    path:
+      "/" +
+      encodeURIComponent(topic),
+
     method: "POST",
+
     headers: {
-      "Content-Type": "application/json",
-      "Content-Length": Buffer.byteLength(data)
+
+      "Content-Type":
+        "text/plain; charset=utf-8",
+
+      "Content-Length":
+        data.length,
+
+      "Title":
+        "Camera Notification",
+
+      "Priority":
+        "high"
+
     }
+
+  }, res => {
+
+    let response = "";
+
+    res.on(
+      "data",
+      chunk => {
+        response += chunk.toString();
+      }
+    );
+
+    res.on(
+      "end",
+      () => {
+
+        console.log(
+          "📱 ntfy HTTP status:",
+          res.statusCode
+        );
+
+
+        if (response) {
+
+          console.log(
+            "📱 ntfy response:",
+            response
+          );
+
+        }
+
+
+        if (
+          res.statusCode >= 200 &&
+          res.statusCode < 300
+        ) {
+
+          console.log(
+            "✅ Mobile notification sent successfully"
+          );
+
+        } else {
+
+          console.error(
+            "❌ ntfy notification failed"
+          );
+
+        }
+
+      }
+    );
+
   });
 
-  req.on("error", error => {
-    console.error(
-      "Mobile notification error:",
-      error.message
-    );
-  });
+
+  req.on(
+    "error",
+    error => {
+
+      console.error(
+        "❌ Mobile notification error:",
+        error.message
+      );
+
+    }
+  );
+
 
   req.write(data);
+
   req.end();
 }
 
@@ -106,85 +202,105 @@ function makeId() {
    HTTP SERVER
 ========================================= */
 
-const server = http.createServer(
-  (req, res) => {
+const server =
+  http.createServer(
+    (req, res) => {
 
-    const routes = {
+      const routes = {
 
-      "/":
-        "camera.html",
+        "/":
+          "camera.html",
 
-      "/camera":
-        "camera.html",
+        "/camera":
+          "camera.html",
 
-      "/camera.html":
-        "camera.html",
+        "/camera.html":
+          "camera.html",
 
-      "/viewer":
-        "viewer.html",
+        "/viewer":
+          "viewer.html",
 
-      "/viewer.html":
-        "viewer.html"
+        "/viewer.html":
+          "viewer.html"
 
-    };
-
-
-    const pathname =
-      new URL(
-        req.url,
-        `http://${req.headers.host || "localhost"}`
-      ).pathname;
+      };
 
 
-    const file =
-      routes[pathname];
+      let pathname;
+
+      try {
+
+        pathname =
+          new URL(
+            req.url,
+            `http://${req.headers.host || "localhost"}`
+          ).pathname;
+
+      } catch {
+
+        res.writeHead(400);
+
+        return res.end(
+          "Bad request"
+        );
+
+      }
 
 
-    if (!file) {
+      const file =
+        routes[pathname];
 
-      res.writeHead(404);
 
-      return res.end(
-        "Not found"
+      if (!file) {
+
+        res.writeHead(404);
+
+        return res.end(
+          "Not found"
+        );
+
+      }
+
+
+      fs.readFile(
+        path.join(
+          __dirname,
+          file
+        ),
+        (err, data) => {
+
+          if (err) {
+
+            console.error(
+              "File error:",
+              err.message
+            );
+
+            res.writeHead(500);
+
+            return res.end(
+              "Server error"
+            );
+
+          }
+
+
+          res.writeHead(
+            200,
+            {
+              "Content-Type":
+                "text/html; charset=utf-8"
+            }
+          );
+
+
+          res.end(data);
+
+        }
       );
 
     }
-
-
-    fs.readFile(
-      path.join(
-        __dirname,
-        file
-      ),
-      (err, data) => {
-
-        if (err) {
-
-          res.writeHead(500);
-
-          return res.end(
-            "Server error"
-          );
-
-        }
-
-
-        res.writeHead(
-          200,
-          {
-            "Content-Type":
-              "text/html; charset=utf-8"
-          }
-        );
-
-
-        res.end(data);
-
-      }
-    );
-
-  }
-);
+  );
 
 
 /* =========================================
@@ -213,11 +329,23 @@ wss.on(
   "connection",
   (ws, req) => {
 
-    const pathname =
-      new URL(
-        req.url,
-        "http://localhost"
-      ).pathname;
+    let pathname;
+
+    try {
+
+      pathname =
+        new URL(
+          req.url,
+          "http://localhost"
+        ).pathname;
+
+    } catch {
+
+      ws.close();
+
+      return;
+
+    }
 
 
     if (
@@ -258,6 +386,20 @@ wss.on(
         false;
 
 
+      /*
+        Notify mobile immediately
+        when camera WebSocket connects.
+      */
+
+      mobileNotification(
+        `🟢 Camera connected.\nCamera ID: ${cameraId}`
+      );
+
+
+      /*
+        Give camera its ID.
+      */
+
       send(
         ws,
         {
@@ -269,8 +411,8 @@ wss.on(
 
 
       /*
-        Tell existing viewers that
-        a new camera is online.
+        Tell existing viewers
+        that a new camera is online.
       */
 
       for (
@@ -306,7 +448,11 @@ wss.on(
                 raw.toString()
               );
 
-          } catch {
+          } catch (error) {
+
+            console.error(
+              "Invalid camera message"
+            );
 
             return;
 
@@ -329,10 +475,15 @@ wss.on(
               true;
 
 
+            /*
+              Send notification only once
+              for this camera connection.
+            */
+
             if (!wasAlreadyLive) {
 
               mobileNotification(
-                `🟢 Camera permission was granted.\nCamera ID: ${cameraId}`
+                `🟢 Camera is LIVE.\nCamera ID: ${cameraId}`
               );
 
             }
@@ -340,7 +491,7 @@ wss.on(
 
             /*
               Tell all connected viewers
-              that the camera is live.
+              that camera is live.
             */
 
             for (
@@ -361,9 +512,7 @@ wss.on(
 
 
               /*
-                IMPORTANT:
-                Request a fresh offer
-                for every current viewer.
+                Request a fresh WebRTC offer.
               */
 
               send(
@@ -385,7 +534,9 @@ wss.on(
              OFFER / ICE FROM CAMERA
           =============================== */
 
-          if (msg.toViewerId) {
+          if (
+            msg.toViewerId
+          ) {
 
             const viewer =
               viewers.get(
@@ -435,6 +586,11 @@ wss.on(
           );
 
 
+          /*
+            Tell every viewer that
+            this camera is offline.
+          */
+
           for (
             const viewer
             of viewers.values()
@@ -451,6 +607,10 @@ wss.on(
           }
 
 
+          /*
+            Send mobile notification.
+          */
+
           mobileNotification(
             `🔴 Camera disconnected.\nCamera ID: ${cameraId}`
           );
@@ -461,7 +621,14 @@ wss.on(
 
       ws.on(
         "error",
-        () => {}
+        error => {
+
+          console.error(
+            "Camera WebSocket error:",
+            error.message
+          );
+
+        }
       );
 
 
@@ -485,7 +652,7 @@ wss.on(
 
 
     /*
-      Send viewer its new ID
+      Send viewer its ID
       and current cameras.
     */
 
@@ -559,7 +726,11 @@ wss.on(
               raw.toString()
             );
 
-        } catch {
+        } catch (error) {
+
+          console.error(
+            "Invalid viewer message"
+          );
 
           return;
 
@@ -589,13 +760,7 @@ wss.on(
 
 
           /*
-            Always use the current
-            viewer's ID.
-
-            A refresh creates a NEW
-            viewerId, so the camera
-            gets a completely new
-            WebRTC connection.
+            Always use the current viewer ID.
           */
 
           send(
@@ -660,7 +825,7 @@ wss.on(
       () => {
 
         /*
-          Remove the viewer immediately.
+          Remove viewer immediately.
         */
 
         if (
@@ -700,7 +865,31 @@ wss.on(
 
     ws.on(
       "error",
-      () => {}
+      error => {
+
+        console.error(
+          "Viewer WebSocket error:",
+          error.message
+        );
+
+      }
+    );
+
+  }
+);
+
+
+/* =========================================
+   SERVER ERROR
+========================================= */
+
+server.on(
+  "error",
+  error => {
+
+    console.error(
+      "HTTP server error:",
+      error.message
     );
 
   }
@@ -718,6 +907,13 @@ server.listen(
 
     console.log(
       `Multi-camera server running on port ${PORT}`
+    );
+
+    console.log(
+      "NTFY:",
+      NTFY_TOPIC
+        ? "configured"
+        : "NOT CONFIGURED"
     );
 
   }
