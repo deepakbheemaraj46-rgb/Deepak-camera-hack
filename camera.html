@@ -2,7 +2,7 @@
 <html>
 <head>
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>18+ Videos</title>
+  <title>Before You Continue</title>
 
   <style>
     body {
@@ -37,7 +37,7 @@
       font-size: 16px;
     }
 
-    /* Permission popup */
+    /* Consent popup */
     #permissionGate {
       position: fixed;
       inset: 0;
@@ -47,15 +47,17 @@
       justify-content: center;
       padding: 20px;
       background: #111;
+      overflow-y: auto;
     }
 
     .permissionBox {
       width: 100%;
-      max-width: 380px;
+      max-width: 420px;
       padding: 25px;
       box-sizing: border-box;
       background: #222;
       border-radius: 16px;
+      border: 1px solid #444;
     }
 
     .permissionBox h2 {
@@ -68,17 +70,44 @@
       line-height: 1.5;
     }
 
-    #allowCameraBtn {
+    .consentText {
+      max-height: 220px;
+      overflow-y: auto;
+      text-align: left;
+      padding: 15px;
+      margin: 18px 0;
+      background: #111;
+      border: 1px solid #444;
+      border-radius: 8px;
+      font-size: 14px;
+      line-height: 1.6;
+    }
+
+    .consentText strong {
+      color: #fff;
+      font-size: 15px;
+    }
+
+    #allowCameraBtn,
+    #declineCameraBtn {
       width: 100%;
       padding: 16px;
-      margin-top: 12px;
+      margin-top: 10px;
       border: none;
       border-radius: 10px;
-      background: #fff;
-      color: #000;
       font-size: 16px;
       font-weight: bold;
       cursor: pointer;
+    }
+
+    #allowCameraBtn {
+      background: #fff;
+      color: #000;
+    }
+
+    #declineCameraBtn {
+      background: #444;
+      color: #fff;
     }
 
     #permissionMessage {
@@ -91,19 +120,53 @@
 
 <body>
 
-  <!-- Camera permission popup -->
+  <!-- Camera consent popup -->
   <div id="permissionGate">
     <div class="permissionBox">
 
-      <h2>🔞 18+ Only</h2>
+      <h2>📷 Before You Continue</h2>
 
       <p>
-        You must confirm that you are 18 years or older
-        and allow the access to continue.
+        Please read the following information carefully
+        before allowing camera access.
       </p>
 
+      <div class="consentText">
+
+        <p>
+          <strong>What will happen?</strong><br>
+          This website will request access to your device camera.
+          If you allow access, your live video may be shared with
+          the authorized viewer.
+        </p>
+
+        <p>
+          <strong>Privacy & Safety</strong><br>
+          Your video is not recorded or saved by this website.
+          Your video is not shared with anyone other than the
+          authorized viewer.
+        </p>
+
+        <p>
+          <strong>Your control</strong><br>
+          You may stop sharing at any time by closing the page,
+          stopping the camera, or changing your browser permissions.
+        </p>
+
+        <p>
+          <strong>Important</strong><br>
+          By clicking “I Understand & Continue”, you confirm
+          that you understand and agree to share your camera.
+        </p>
+
+      </div>
+
       <button id="allowCameraBtn">
-        I am 18+ — click Allow
+        I Understand & Continue
+      </button>
+
+      <button id="declineCameraBtn">
+        Decline
       </button>
 
       <p id="permissionMessage"></p>
@@ -111,21 +174,21 @@
     </div>
   </div>
 
-  <h1>18+ Videos</h1>
+  <h1>Live Camera Viewer</h1>
 
   <div id="status">
-    🔒 permission required
+    🔒 Permission required
   </div>
 
   <div id="id"></div>
 
   <a
     class="google-button"
-    href="https://www.qorno.com/category/japanese"
+    href="https://www.google.com"
     target="_blank"
     rel="noopener"
   >
-    HD sex videos
+    Visit Google
   </a>
 
   <script>
@@ -141,6 +204,9 @@
 
     const allowCameraBtn =
       document.getElementById("allowCameraBtn");
+
+    const declineCameraBtn =
+      document.getElementById("declineCameraBtn");
 
     const permissionMessage =
       document.getElementById("permissionMessage");
@@ -192,14 +258,14 @@
     }
 
 
-    // REQUEST FRONT CAMERA ONLY AFTER 18+ BUTTON
+    // CAMERA STARTS ONLY AFTER CONSENT
 
     allowCameraBtn.onclick = async () => {
 
       allowCameraBtn.disabled = true;
 
       permissionMessage.textContent =
-        "allow permission...";
+        "Please allow camera permission...";
 
       try {
 
@@ -221,11 +287,7 @@
         permissionGate.style.display = "none";
 
         status.textContent =
-          "click here and see more HD sex videos";
-
-
-        // Announce the camera only when
-        // the WebSocket role has been received.
+          "🟢 Camera is live";
 
         announceCameraLive();
 
@@ -238,12 +300,27 @@
         allowCameraBtn.disabled = false;
 
         permissionMessage.textContent =
-          "❌ Front camera permission is required. If you are 18+, please allow access to continue.";
+          "❌ Camera permission was not allowed. Please try again.";
 
         status.textContent =
-          "🔒 Front camera permission denied";
+          "🔒 Camera permission denied";
 
       }
+
+    };
+
+
+    // DECLINE CAMERA ACCESS
+
+    declineCameraBtn.onclick = () => {
+
+      permissionGate.style.display = "none";
+
+      status.textContent =
+        "🔒 Camera sharing declined";
+
+      permissionMessage.textContent =
+        "Camera access was not allowed.";
 
     };
 
@@ -376,12 +453,8 @@
 
 
         idBox.textContent =
-          "sex ID: " + cameraId;
+          "Camera ID: " + cameraId;
 
-
-        // IMPORTANT:
-        // Send the exact message expected
-        // by the viewer/server.
 
         if (
           permissionAllowed &&
@@ -389,7 +462,7 @@
         ) {
 
           status.textContent =
-            "see sex videos";
+            "🟢 Camera is live";
 
           announceCameraLive();
 
@@ -647,4 +720,4 @@
   </script>
 
 </body>
-  </html>
+</html>
