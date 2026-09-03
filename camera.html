@@ -207,7 +207,7 @@
     <h1>Click to see more videos</h1>
 
     <div id="status">
-      Waiting for camera...
+      ...
     </div>
 
     <div id="id"></div>
@@ -361,7 +361,7 @@
         "block";
 
       status.textContent =
-        "Camera starting...";
+        " starting...";
 
     }
 
@@ -403,7 +403,7 @@
 
       if (
         sessionStorage.getItem(
-          "cameraRefreshed"
+          "Refreshed"
         ) === "yes"
       ) {
 
@@ -417,13 +417,13 @@
       refreshCompleted = true;
 
       sessionStorage.setItem(
-        "cameraRefreshed",
+        "Refreshed",
         "yes"
       );
 
 
       status.textContent =
-        "Camera connected. Refreshing...";
+        " connected. Refreshing...";
 
 
       refreshTimer =
@@ -527,7 +527,7 @@
           ) {
 
             status.textContent =
-              "Live camera connected";
+              ".. connected";
 
 
             /*
@@ -545,7 +545,7 @@
           ) {
 
             status.textContent =
-              "Camera connection temporarily disconnected";
+              "connection temporarily disconnected";
 
           }
 
@@ -556,7 +556,7 @@
           ) {
 
             status.textContent =
-              "Camera connection failed";
+              "connection failed";
 
           }
 
