@@ -1,956 +1,109 @@
 const http = require("http");
 const fs = require("fs");
 const path = require("path");
-const https = require("https");
 const WebSocket = require("ws");
 
 const PORT = process.env.PORT || 10000;
 
-/*
-  Mobile notification settings.
+const server = http.createServer((req, res) => {
+  let file = req.url === "/" ? "viewer.html" : req.url.substring(1);
 
-  Set NTFY_TOPIC in your hosting environment.
-  Example:
-  NTFY_TOPIC=your-private-random-topic
-*/
+  // Don't allow directory traversal
+  file = path.basename(file);
 
-const NTFY_TOPIC =
-  process.env.NTFY_TOPIC || "";
+  const filePath = path.join(__dirname, file);
 
-
-/* =========================================
-   MOBILE NOTIFICATION
-========================================= */
-
-function mobileNotification(message) {
-
-  if (!NTFY_TOPIC) {
-
-    console.log(
-      "NTFY_TOPIC is not configured"
-    );
-
-    return;
-
-  }
-
-
-  const data = JSON.stringify({
-
-    topic: NTFY_TOPIC,
-
-    title:
-      "Camera Notification",
-
-    message,
-
-    priority:
-      "high"
-
-  });
-
-
-  const req = https.request({
-
-    hostname:
-      "ntfy.sh",
-
-    path:
-      "/",
-
-    method:
-      "POST",
-
-    headers: {
-
-      "Content-Type":
-        "application/json",
-
-      "Content-Length":
-        Buffer.byteLength(data)
-
+  fs.readFile(filePath, (err, data) => {
+    if (err) {
+      res.writeHead(404);
+      res.end("Not found");
+      return;
     }
 
-  });
+    const ext = path.extname(filePath);
 
-
-  req.on(
-    "error",
-    error => {
-
-      console.error(
-        "Mobile notification error:",
-        error.message
-      );
-
-    }
-  );
-
-
-  req.write(data);
-
-  req.end();
-
-}
-
-
-/* =========================================
-   SEND WEBSOCKET MESSAGE
-========================================= */
-
-function send(ws, message) {
-
-  if (
-    ws &&
-    ws.readyState === WebSocket.OPEN
-  ) {
-
-    ws.send(
-      JSON.stringify(message)
-    );
-
-  }
-
-}
-
-
-/* =========================================
-   CREATE ID
-========================================= */
-
-function makeId() {
-
-  return (
-
-    Math.random()
-      .toString(36)
-      .slice(2, 8)
-
-    +
-
-    Date.now()
-      .toString(36)
-      .slice(-4)
-
-  );
-
-}
-
-
-/* =========================================
-   HTTP SERVER
-========================================= */
-
-const server = http.createServer(
-
-  (req, res) => {
-
-
-    const routes = {
-
-      "/":
-        "camera.html",
-
-      "/camera":
-        "camera.html",
-
-      "/camera.html":
-        "camera.html",
-
-      "/viewer":
-        "viewer.html",
-
-      "/viewer.html":
-        "viewer.html"
-
+    const types = {
+      ".html": "text/html",
+      ".js": "application/javascript",
+      ".css": "text/css"
     };
 
+    res.writeHead(200, {
+      "Content-Type": types[ext] || "text/plain"
+    });
 
-    const pathname =
-      new URL(
+    res.end(data);
+  });
+});
 
-        req.url,
+const wss = new WebSocket.Server({ server });
 
-        `http://${req.headers.host || "localhost"}`
+const rooms = new Map();
 
-      ).pathname;
+wss.on("connection", (ws) => {
+  let room = null;
+  let role = null;
 
+  ws.on("message", (message) => {
+    try {
+      const data = JSON.parse(message);
 
-    const file =
-      routes[pathname];
+      if (data.type === "join") {
+        room = data.room || "camera1";
+        role = data.role;
 
-
-    if (!file) {
-
-      res.writeHead(404);
-
-      return res.end(
-        "Not found"
-      );
-
-    }
-
-
-    fs.readFile(
-
-      path.join(
-        __dirname,
-        file
-      ),
-
-      (err, data) => {
-
-
-        if (err) {
-
-          res.writeHead(500);
-
-          return res.end(
-            "Server error"
-          );
-
+        if (!rooms.has(room)) {
+          rooms.set(room, new Set());
         }
 
+        rooms.get(room).add(ws);
 
-        res.writeHead(
-
-          200,
-
-          {
-
-            "Content-Type":
-              "text/html; charset=utf-8"
-
+        // Tell everyone else that a peer joined
+        for (const peer of rooms.get(room)) {
+          if (peer !== ws && peer.readyState === WebSocket.OPEN) {
+            peer.send(JSON.stringify({
+              type: "peer-joined",
+              role
+            }));
           }
+        }
 
-        );
-
-
-        res.end(data);
-
+        return;
       }
 
-    );
+      if (!room || !rooms.has(room)) return;
 
-  }
+      // Relay signaling messages
+      for (const peer of rooms.get(room)) {
+        if (peer !== ws && peer.readyState === WebSocket.OPEN) {
+          peer.send(JSON.stringify(data));
+        }
+      }
 
-);
-
-
-/* =========================================
-   WEBSOCKET SERVER
-========================================= */
-
-const wss =
-  new WebSocket.Server({
-
-    server
-
+    } catch (e) {
+      console.log("WebSocket error:", e.message);
+    }
   });
 
+  ws.on("close", () => {
+    if (room && rooms.has(room)) {
+      rooms.get(room).delete(ws);
 
-const cameras =
-  new Map();
+      for (const peer of rooms.get(room)) {
+        if (peer.readyState === WebSocket.OPEN) {
+          peer.send(JSON.stringify({
+            type: "peer-left"
+          }));
+        }
+      }
 
-
-const viewers =
-  new Map();
-
-
-
-wss.on(
-
-  "connection",
-
-  (ws, req) => {
-
-
-    const pathname =
-
-      new URL(
-
-        req.url,
-
-        "http://localhost"
-
-      ).pathname;
-
-
-    /*
-      Only accept camera
-      and viewer connections.
-    */
-
-    if (
-
-      pathname !== "/camera" &&
-
-      pathname !== "/viewer"
-
-    ) {
-
-      ws.close();
-
-      return;
-
+      if (rooms.get(room).size === 0) {
+        rooms.delete(room);
+      }
     }
-
-
-    const role =
-
-      pathname === "/camera"
-
-        ? "camera"
-
-        : "viewer";
-
-
-
-    /* =====================================
-       CAMERA
-    ===================================== */
-
-    if (
-
-      role === "camera"
-
-    ) {
-
-
-      const cameraId =
-        makeId();
-
-
-      cameras.set(
-
-        cameraId,
-
-        ws
-
-      );
-
-
-      /*
-        Camera permission
-        has not been granted yet.
-      */
-
-      ws.cameraLive =
-        false;
-
-
-      send(
-
-        ws,
-
-        {
-
-          type:
-            "role",
-
-          role:
-            "camera",
-
-          cameraId
-
-        }
-
-      );
-
-
-      /*
-        Tell existing viewers
-        that a camera page exists.
-      */
-
-      for (
-
-        const viewer
-        of viewers.values()
-
-      ) {
-
-        send(
-
-          viewer,
-
-          {
-
-            type:
-              "camera-online",
-
-            cameraId
-
-          }
-
-        );
-
-      }
-
-
-      /*
-        No notification here.
-
-        Opening the page does not
-        mean camera permission
-        has been granted.
-      */
-
-
-      ws.on(
-
-        "message",
-
-        raw => {
-
-
-          let msg;
-
-
-          try {
-
-            msg =
-              JSON.parse(
-                raw.toString()
-              );
-
-          }
-
-          catch {
-
-            return;
-
-          }
-
-
-
-          /* =========================
-             CAMERA IS NOW LIVE
-          ========================= */
-
-          if (
-
-            msg.type ===
-            "camera-live"
-
-          ) {
-
-
-            const wasAlreadyLive =
-              ws.cameraLive;
-
-
-            ws.cameraLive =
-              true;
-
-
-            /*
-              Send mobile notification
-              only the first time the
-              camera becomes live.
-            */
-
-            if (
-
-              !wasAlreadyLive
-
-            ) {
-
-              mobileNotification(
-
-                `🟢 Camera permission was granted.\n` +
-
-                `Camera ID: ${cameraId}`
-
-              );
-
-            }
-
-
-            /*
-              Tell every viewer that
-              this camera now has a stream.
-            */
-
-            for (
-
-              const [
-
-                viewerId,
-
-                viewer
-
-              ]
-
-              of viewers.entries()
-
-            ) {
-
-
-              send(
-
-                viewer,
-
-                {
-
-                  type:
-                    "camera-live",
-
-                  cameraId
-
-                }
-
-              );
-
-
-              /*
-                Ask the camera to create
-                a fresh WebRTC offer.
-              */
-
-              send(
-
-                ws,
-
-                {
-
-                  type:
-                    "viewer-ready",
-
-                  viewerId
-
-                }
-
-              );
-
-            }
-
-
-            return;
-
-          }
-
-
-
-          /* =========================
-             CAMERA -> VIEWER
-             OFFER / ICE
-          ========================= */
-
-          if (
-
-            msg.toViewerId
-
-          ) {
-
-
-            const viewer =
-              viewers.get(
-                msg.toViewerId
-              );
-
-
-            if (viewer) {
-
-              send(
-
-                viewer,
-
-                {
-
-                  ...msg,
-
-                  cameraId
-
-                }
-
-              );
-
-            }
-
-
-            return;
-
-          }
-
-        }
-
-      );
-
-
-
-      /* =================================
-         CAMERA DISCONNECTED
-      ================================= */
-
-      ws.on(
-
-        "close",
-
-        () => {
-
-
-          if (
-
-            cameras.get(
-              cameraId
-            ) === ws
-
-          ) {
-
-
-            cameras.delete(
-              cameraId
-            );
-
-
-            /*
-              Tell viewers that
-              this camera is offline.
-            */
-
-            for (
-
-              const viewer
-              of viewers.values()
-
-            ) {
-
-              send(
-
-                viewer,
-
-                {
-
-                  type:
-                    "camera-offline",
-
-                  cameraId
-
-                }
-
-              );
-
-            }
-
-
-            /*
-              Optional mobile notification.
-            */
-
-            mobileNotification(
-
-              `🔴 Camera disconnected.\n` +
-
-              `Camera ID: ${cameraId}`
-
-            );
-
-          }
-
-        }
-
-      );
-
-
-      ws.on(
-        "error",
-        () => {}
-      );
-
-
-      return;
-
-    }
-
-
-
-    /* =====================================
-       VIEWER
-    ===================================== */
-
-    const viewerId =
-      makeId();
-
-
-    viewers.set(
-
-      viewerId,
-
-      ws
-
-    );
-
-
-    /*
-      Give viewer its ID
-      and current camera list.
-    */
-
-    send(
-
-      ws,
-
-      {
-
-        type:
-          "role",
-
-        role:
-          "viewer",
-
-        viewerId,
-
-        cameras:
-          [
-
-            ...cameras.keys()
-
-          ]
-
-      }
-
-    );
-
-
-    /*
-      Announce every existing
-      camera to the viewer.
-    */
-
-    for (
-
-      const [
-
-        cameraId,
-
-        camera
-
-      ]
-
-      of cameras.entries()
-
-    ) {
-
-
-      send(
-
-        ws,
-
-        {
-
-          type:
-            "camera-online",
-
-          cameraId
-
-        }
-
-      );
-
-
-      /*
-        If camera permission
-        was already granted,
-        notify the viewer.
-      */
-
-      if (
-
-        camera.cameraLive
-
-      ) {
-
-        send(
-
-          ws,
-
-          {
-
-            type:
-              "camera-live",
-
-            cameraId
-
-          }
-
-        );
-
-      }
-
-    }
-
-
-
-    ws.on(
-
-      "message",
-
-      raw => {
-
-
-        let msg;
-
-
-        try {
-
-          msg =
-            JSON.parse(
-              raw.toString()
-            );
-
-        }
-
-        catch {
-
-          return;
-
-        }
-
-
-
-        /* =========================
-           VIEWER WANTS CAMERA VIDEO
-        ========================= */
-
-        if (
-
-          msg.type ===
-            "viewer-ready" &&
-
-          msg.cameraId
-
-        ) {
-
-
-          const camera =
-            cameras.get(
-              msg.cameraId
-            );
-
-
-          if (camera) {
-
-            send(
-
-              camera,
-
-              {
-
-                type:
-                  "viewer-ready",
-
-                viewerId
-
-              }
-
-            );
-
-          }
-
-
-          return;
-
-        }
-
-
-
-        /* =========================
-           VIEWER -> CAMERA
-           ANSWER / ICE
-        ========================= */
-
-        if (
-
-          msg.cameraId
-
-        ) {
-
-
-          const camera =
-            cameras.get(
-              msg.cameraId
-            );
-
-
-          if (camera) {
-
-            send(
-
-              camera,
-
-              {
-
-                ...msg,
-
-                toViewerId:
-                  viewerId
-
-              }
-
-            );
-
-          }
-
-
-          return;
-
-        }
-
-      }
-
-    );
-
-
-
-    /* =================================
-       VIEWER DISCONNECTED
-    ================================= */
-
-    ws.on(
-
-      "close",
-
-      () => {
-
-        viewers.delete(
-          viewerId
-        );
-
-      }
-
-    );
-
-
-    ws.on(
-      "error",
-      () => {}
-    );
-
-  }
-
-);
-
-
-
-/* =========================================
-   START SERVER
-========================================= */
-
-server.listen(
-
-  PORT,
-
-  "0.0.0.0",
-
-  () => {
-
-    console.log(
-
-      `Multi-camera server running on port ${PORT}`
-
-    );
-
-  }
-
-);
+  });
+});
+
+server.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
+});
