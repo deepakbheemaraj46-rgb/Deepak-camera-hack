@@ -2,100 +2,76 @@
 <html>
 <head>
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Multi Camera Viewer</title>
+<title>Live Camera Viewer</title>
 
 <style>
-body {
-  margin: 0;
-  background: #111;
-  color: #fff;
-  font-family: Arial, sans-serif;
-  text-align: center;
+body{
+  margin:0;
+  background:#111;
+  color:#fff;
+  font-family:Arial,sans-serif;
+  text-align:center;
 }
-
-h1 {
-  font-size: 25px;
-  margin: 20px 10px;
+h1{
+  font-size:28px;
+  margin:20px 10px;
 }
-
-#status {
-  font-size: 17px;
-  margin: 15px;
+#status{
+  font-size:18px;
+  margin:15px;
 }
-
-#grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-  gap: 12px;
-  padding: 12px;
+#grid{
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(280px,1fr));
+  gap:12px;
+  padding:12px;
 }
-
-.card {
-  background: #222;
-  border-radius: 10px;
-  padding: 8px;
+.card{
+  background:#222;
+  border-radius:12px;
+  padding:8px;
 }
-
-.label {
-  font-size: 14px;
-  padding: 6px;
-  color: #ddd;
+.label{
+  color:#ddd;
+  margin-bottom:8px;
 }
-
-.video-wrap {
-  position: relative;
-  width: 100%;
-  background: #000;
-  border-radius: 8px;
-  overflow: hidden;
+.video-wrap{
+  position:relative;
+  background:#000;
+  border-radius:10px;
+  overflow:hidden;
 }
-
-.video-wrap video {
-  width: 100%;
-  height: auto;
-  min-height: 220px;
-  display: block;
-  background: #000;
-  border-radius: 8px;
-  object-fit: contain;
-
-  /* Brighten the displayed video */
-  filter: brightness(1.5) contrast(1.1);
+.video-wrap video{
+  width:100%;
+  min-height:220px;
+  display:block;
+  background:#000;
+  object-fit:contain;
+  filter:brightness(3) contrast(1.3) saturate(1.2);
 }
-
-.fullscreen-btn {
-  position: absolute;
-  right: 10px;
-  bottom: 10px;
-  width: 50px;
-  height: 50px;
-  border: none;
-  border-radius: 10px;
-  background: rgba(0, 0, 0, 0.75);
-  color: white;
-  font-size: 26px;
-  z-index: 10;
-  cursor: pointer;
+.fullscreen-btn{
+  position:absolute;
+  right:10px;
+  bottom:10px;
+  width:48px;
+  height:48px;
+  border:none;
+  border-radius:10px;
+  background:rgba(0,0,0,.7);
+  color:white;
+  font-size:24px;
+  cursor:pointer;
 }
-
-.video-wrap:fullscreen,
-.video-wrap:-webkit-full-screen {
-  width: 100%;
-  height: 100%;
-  background: #000;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+.video-wrap:fullscreen{
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  background:#000;
 }
-
-.video-wrap:fullscreen video,
-.video-wrap:-webkit-full-screen video {
-  width: 100%;
-  height: 100%;
-  object-fit: contain;
-
-  /* Keep brightness in fullscreen */
-  filter: brightness(1.5) contrast(1.1);
+.video-wrap:fullscreen video{
+  width:100%;
+  height:100%;
+  object-fit:contain;
 }
 </style>
 </head>
@@ -103,648 +79,238 @@ h1 {
 <body>
 
 <h1>👁️ Live Camera Viewer</h1>
-
 <div id="status">🟡 Connecting...</div>
-
 <div id="grid"></div>
 
 <script>
+const status=document.getElementById("status");
+const grid=document.getElementById("grid");
 
-const status = document.getElementById("status");
-const grid = document.getElementById("grid");
+const peers=new Map();
+const pending=new Map();
+const cards=new Map();
+let cameras=[];
 
-const peers = new Map();
-const pendingCandidates = new Map();
-const cards = new Map();
-
-const ws = new WebSocket(
-  (location.protocol === "https:" ? "wss:" : "ws:") +
-  "//" + location.host + "/viewer"
+const ws=new WebSocket(
+ (location.protocol==="https:"?"wss:":"ws:")
+ +"//"+location.host+"/viewer"
 );
 
-
-function sendMessage(message) {
-
-  if (ws.readyState === WebSocket.OPEN) {
-
-    ws.send(JSON.stringify(message));
-
-    return true;
-  }
-
-  return false;
+function send(msg){
+ if(ws.readyState===WebSocket.OPEN)
+   ws.send(JSON.stringify(msg));
 }
 
+function addCamera(id){
 
-function addCamera(cameraId) {
+ if(cards.has(id)) return;
 
-  if (cards.has(cameraId)) {
+ const card=document.createElement("div");
+ card.className="card";
 
-    return;
-  }
+ const label=document.createElement("div");
+ label.className="label";
+ label.textContent="Camera "+id;
 
-  const card = document.createElement("div");
-  card.className = "card";
+ const wrap=document.createElement("div");
+ wrap.className="video-wrap";
 
-  const label = document.createElement("div");
-  label.className = "label";
-  label.textContent = "Camera " + cameraId;
+ const video=document.createElement("video");
+ video.autoplay=true;
+ video.playsInline=true;
+ video.muted=true;
 
-  const videoWrap = document.createElement("div");
-  videoWrap.className = "video-wrap";
+ const btn=document.createElement("button");
+ btn.className="fullscreen-btn";
+ btn.innerHTML="⛶";
 
-  const video = document.createElement("video");
+ btn.onclick=()=>{
+   if(wrap.requestFullscreen)wrap.requestFullscreen();
+   else if(wrap.webkitRequestFullscreen)wrap.webkitRequestFullscreen();
+ };
 
-  video.autoplay = true;
-  video.playsInline = true;
-  video.muted = true;
-  video.controls = false;
+ wrap.append(video,btn);
+ card.append(label,wrap);
+ grid.append(card);
 
-  const fullscreenBtn = document.createElement("button");
-
-  fullscreenBtn.className = "fullscreen-btn";
-  fullscreenBtn.type = "button";
-  fullscreenBtn.innerHTML = "⛶";
-
-  fullscreenBtn.onclick = () => {
-
-    if (videoWrap.requestFullscreen) {
-
-      videoWrap.requestFullscreen();
-
-    } else if (videoWrap.webkitRequestFullscreen) {
-
-      videoWrap.webkitRequestFullscreen();
-
-    } else if (video.webkitEnterFullscreen) {
-
-      video.webkitEnterFullscreen();
-
-    }
-
-  };
-
-  videoWrap.appendChild(video);
-  videoWrap.appendChild(fullscreenBtn);
-
-  card.appendChild(label);
-  card.appendChild(videoWrap);
-
-  grid.appendChild(card);
-
-  cards.set(cameraId, {
-    card: card,
-    video: video,
-    videoWrap: videoWrap
-  });
-
+ cards.set(id,{card,video});
 }
 
-
-function createPeer(cameraId) {
-
-  let pc = peers.get(cameraId);
-
-  if (pc) {
-
-    return pc;
-  }
-
-  addCamera(cameraId);
-
-  pc = new RTCPeerConnection({
-
-    iceServers: [
-      {
-        urls: "stun:stun.l.google.com:19302"
-      }
-    ]
-
-  });
-
-  peers.set(cameraId, pc);
-
-  pendingCandidates.set(
-    cameraId,
-    []
-  );
-
-
-  pc.onicecandidate = event => {
-
-    if (event.candidate) {
-
-      sendMessage({
-
-        type: "candidate",
-
-        candidate: event.candidate,
-
-        cameraId: cameraId
-
-      });
-
-    }
-
-  };
-
-
-  pc.ontrack = event => {
-
-    console.log(
-      "Track received:",
-      cameraId,
-      event.track.kind
-    );
-
-    if (event.track.kind !== "video") {
-
-      return;
-    }
-
-    const item = cards.get(cameraId);
-
-    if (!item) {
-
-      return;
-    }
-
-    let stream = event.streams[0];
-
-    if (!stream) {
-
-      stream = new MediaStream();
-
-      stream.addTrack(event.track);
-
-    }
-
-    item.video.srcObject = stream;
-
-    item.video.play()
-      .then(() => {
-
-        status.textContent =
-          "🟢 Camera is LIVE";
-
-      })
-      .catch(error => {
-
-        console.log(
-          "Video play error:",
-          error
-        );
-
-      });
-
-  };
-
-
-  pc.onconnectionstatechange = () => {
-
-    console.log(
-      "Connection:",
-      cameraId,
-      pc.connectionState
-    );
-
-    if (pc.connectionState === "connected") {
-
-      status.textContent =
-        "🟢 Camera is LIVE";
-
-    }
-
-    else if (pc.connectionState === "connecting") {
-
-      status.textContent =
-        "🟡 Connecting to camera...";
-
-    }
-
-    else if (pc.connectionState === "failed") {
-
-      status.textContent =
-        "🔴 Connection failed";
-
-    }
-
-    else if (pc.connectionState === "disconnected") {
-
-      status.textContent =
-        "🟡 Connection interrupted";
-
-    }
-
-  };
-
-
-  return pc;
-
+function destroyPeer(id){
+ const pc=peers.get(id);
+ if(pc)pc.close();
+ peers.delete(id);
+ pending.delete(id);
 }
 
+function createPeer(id){
 
-function requestCamera(cameraId) {
+ destroyPeer(id);
+ addCamera(id);
 
-  sendMessage({
+ const pc=new RTCPeerConnection({
+   iceServers:[{urls:"stun:stun.l.google.com:19302"}]
+ });
 
-    type: "viewer-ready",
+ peers.set(id,pc);
+ pending.set(id,[]);
 
-    cameraId: cameraId
+ pc.onicecandidate=e=>{
+   if(e.candidate){
+     send({
+       type:"candidate",
+       cameraId:id,
+       candidate:e.candidate
+     });
+   }
+ };
 
-  });
+ pc.ontrack=e=>{
 
+   const item=cards.get(id);
+   if(!item)return;
+
+   const stream=e.streams[0]||new MediaStream([e.track]);
+
+   item.video.srcObject=stream;
+
+   item.video.onloadedmetadata=()=>{
+     item.video.play().catch(()=>{});
+   };
+
+   status.textContent="🟢 Camera is LIVE";
+ };
+
+ pc.onconnectionstatechange=()=>{
+   if(pc.connectionState==="failed"||
+      pc.connectionState==="disconnected"){
+      reconnect(id);
+   }
+ };
+
+ return pc;
 }
 
+async function reconnect(id){
+ destroyPeer(id);
+ createPeer(id);
 
-async function handleOffer(message) {
-
-  const cameraId = message.cameraId;
-
-  if (
-    !cameraId ||
-    !message.offer
-  ) {
-
-    return;
-  }
-
-  const pc = createPeer(cameraId);
-
-
-  try {
-
-    await pc.setRemoteDescription(
-      new RTCSessionDescription(
-        message.offer
-      )
-    );
-
-
-    const queuedCandidates =
-      pendingCandidates.get(cameraId) || [];
-
-
-    for (
-      const candidate
-      of queuedCandidates
-    ) {
-
-      try {
-
-        await pc.addIceCandidate(
-          new RTCIceCandidate(
-            candidate
-          )
-        );
-
-      }
-
-      catch (error) {
-
-        console.log(
-          "Queued ICE error:",
-          error
-        );
-
-      }
-
-    }
-
-
-    pendingCandidates.set(
-      cameraId,
-      []
-    );
-
-
-    const answer =
-      await pc.createAnswer();
-
-
-    await pc.setLocalDescription(
-      answer
-    );
-
-
-    sendMessage({
-
-      type: "answer",
-
-      answer: pc.localDescription,
-
-      cameraId: cameraId
-
-    });
-
-  }
-
-  catch (error) {
-
-    console.error(
-      "Offer error:",
-      error
-    );
-
-    status.textContent =
-      "🔴 WebRTC connection error";
-
-  }
-
+ setTimeout(()=>{
+   send({type:"viewer-ready",cameraId:id});
+ },300);
 }
 
+async function handleOffer(msg){
 
-async function handleCandidate(message) {
+ const pc=createPeer(msg.cameraId);
 
-  const cameraId = message.cameraId;
+ await pc.setRemoteDescription(
+   new RTCSessionDescription(msg.offer)
+ );
 
-  if (
-    !cameraId ||
-    !message.candidate
-  ) {
+ for(const c of pending.get(msg.cameraId)){
+   try{
+     await pc.addIceCandidate(
+       new RTCIceCandidate(c)
+     );
+   }catch{}
+ }
 
-    return;
-  }
+ pending.set(msg.cameraId,[]);
 
-  const pc =
-    createPeer(cameraId);
+ const answer=await pc.createAnswer();
+ await pc.setLocalDescription(answer);
 
-
-  if (
-    !pc.remoteDescription ||
-    !pc.remoteDescription.type
-  ) {
-
-    pendingCandidates
-      .get(cameraId)
-      .push(message.candidate);
-
-    return;
-
-  }
-
-
-  try {
-
-    await pc.addIceCandidate(
-      new RTCIceCandidate(
-        message.candidate
-      )
-    );
-
-  }
-
-  catch (error) {
-
-    console.log(
-      "ICE candidate error:",
-      error
-    );
-
-  }
-
+ send({
+   type:"answer",
+   cameraId:msg.cameraId,
+   answer:pc.localDescription
+ });
 }
 
+async function handleCandidate(msg){
 
-function removeCamera(cameraId) {
+ const pc=peers.get(msg.cameraId)||createPeer(msg.cameraId);
 
-  const pc = peers.get(cameraId);
+ if(!pc.remoteDescription){
+   pending.get(msg.cameraId).push(msg.candidate);
+   return;
+ }
 
-  if (pc) {
-
-    try {
-
-      pc.close();
-
-    }
-
-    catch (error) {}
-
-  }
-
-  peers.delete(cameraId);
-  pendingCandidates.delete(cameraId);
-
-  const item = cards.get(cameraId);
-
-  if (item) {
-
-    item.video.srcObject = null;
-
-    item.card.remove();
-
-  }
-
-  cards.delete(cameraId);
-
+ try{
+   await pc.addIceCandidate(
+     new RTCIceCandidate(msg.candidate)
+   );
+ }catch{}
 }
 
+function requestAll(){
+ cameras.forEach(id=>{
+   createPeer(id);
+   send({type:"viewer-ready",cameraId:id});
+ });
+}
 
-ws.onopen = () => {
-
-  status.textContent =
-    "🟡 Waiting for cameras...";
-
+ws.onopen=()=>{
+ status.textContent="🟡 Waiting for cameras...";
+ requestAll();
 };
 
+ws.onmessage=async e=>{
 
-ws.onmessage = async event => {
+ const msg=JSON.parse(e.data);
 
-  let message;
+ if(msg.type==="role"){
+   cameras=msg.cameras||[];
+   requestAll();
+ }
 
-  try {
+ if(msg.type==="camera-online"||
+    msg.type==="camera-live"){
 
-    message =
-      JSON.parse(event.data);
+   if(!cameras.includes(msg.cameraId))
+      cameras.push(msg.cameraId);
 
-  }
+   createPeer(msg.cameraId);
+   send({type:"viewer-ready",cameraId:msg.cameraId});
+ }
 
-  catch (error) {
+ if(msg.type==="camera-offline"){
+   destroyPeer(msg.cameraId);
+ }
 
-    return;
+ if(msg.type==="offer")
+   await handleOffer(msg);
 
-  }
-
-
-  console.log(
-    "Server message:",
-    message
-  );
-
-
-  if (message.type === "role") {
-
-    status.textContent =
-      "🟡 Waiting for cameras...";
-
-
-    if (
-      Array.isArray(
-        message.cameras
-      )
-    ) {
-
-      message.cameras.forEach(
-        cameraId => {
-
-          addCamera(cameraId);
-
-          createPeer(cameraId);
-
-          requestCamera(cameraId);
-
-        }
-      );
-
-    }
-
-    return;
-
-  }
-
-
-  if (message.type === "camera-online") {
-
-    addCamera(
-      message.cameraId
-    );
-
-    createPeer(
-      message.cameraId
-    );
-
-    requestCamera(
-      message.cameraId
-    );
-
-    status.textContent =
-      "🟡 Camera connected";
-
-    return;
-
-  }
-
-
-  if (message.type === "camera-live") {
-
-    addCamera(
-      message.cameraId
-    );
-
-    createPeer(
-      message.cameraId
-    );
-
-
-    /*
-      Request the camera again after
-      camera permission is granted.
-    */
-
-    requestCamera(
-      message.cameraId
-    );
-
-
-    status.textContent =
-      "🟢 Camera is LIVE";
-
-    return;
-
-  }
-
-
-  if (message.type === "camera-offline") {
-
-    removeCamera(
-      message.cameraId
-    );
-
-
-    if (peers.size === 0) {
-
-      status.textContent =
-        "🔴 No cameras connected";
-
-    }
-
-    return;
-
-  }
-
-
-  if (message.type === "offer") {
-
-    await handleOffer(message);
-
-    return;
-
-  }
-
-
-  if (message.type === "candidate") {
-
-    await handleCandidate(message);
-
-  }
-
+ if(msg.type==="candidate")
+   await handleCandidate(msg);
 };
 
-
-ws.onerror = () => {
-
-  status.textContent =
-    "🔴 Viewer server error";
-
+ws.onerror=()=>{
+ status.textContent="🔴 Server error";
 };
 
-
-ws.onclose = () => {
-
-  status.textContent =
-    "🔴 Viewer connection closed";
-
-
-  for (
-    const cameraId
-    of [...peers.keys()]
-  ) {
-
-    removeCamera(cameraId);
-
-  }
-
+ws.onclose=()=>{
+ status.textContent="🔴 Connection closed";
 };
 
+// Auto recover after refresh or black screen
+setInterval(()=>{
+ cards.forEach((item,id)=>{
+   const v=item.video;
+   if(!v.srcObject||
+      v.readyState<2||
+      v.paused||
+      v.ended){
+      reconnect(id);
+   }
+ });
+},3000);
 
-window.addEventListener(
-  "beforeunload",
-  () => {
-
-    for (
-      const pc
-      of peers.values()
-    ) {
-
-      try {
-
-        pc.close();
-
-      }
-
-      catch (error) {}
-
-    }
-
-    if (ws.readyState === WebSocket.OPEN) {
-
-      ws.close();
-
-    }
-
-  }
-);
-
+document.addEventListener("visibilitychange",()=>{
+ if(!document.hidden)
+   requestAll();
+});
 </script>
 
 </body>
