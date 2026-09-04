@@ -12,29 +12,16 @@ body{
   font-family:Arial,sans-serif;
   text-align:center;
 }
-h1{
-  font-size:28px;
-  margin:20px 10px;
-}
-#status{
-  font-size:18px;
-  margin:15px;
-}
+h1{font-size:28px;margin:20px 10px;}
+#status{font-size:18px;margin:15px;}
 #grid{
   display:grid;
   grid-template-columns:repeat(auto-fit,minmax(280px,1fr));
   gap:12px;
   padding:12px;
 }
-.card{
-  background:#222;
-  border-radius:12px;
-  padding:8px;
-}
-.label{
-  color:#ddd;
-  margin-bottom:8px;
-}
+.card{background:#222;border-radius:12px;padding:8px;}
+.label{color:#ddd;margin-bottom:8px;}
 .video-wrap{
   position:relative;
   background:#000;
@@ -58,7 +45,7 @@ h1{
   border:none;
   border-radius:10px;
   background:rgba(0,0,0,.7);
-  color:white;
+  color:#fff;
   font-size:24px;
   cursor:pointer;
 }
@@ -90,226 +77,238 @@ const peers=new Map();
 const pending=new Map();
 const cards=new Map();
 let cameras=[];
-
-const ws=new WebSocket(
- (location.protocol==="https:"?"wss:":"ws:")
- +"//"+location.host+"/viewer"
-);
+let ws;
+let reconnectingWS=false;
 
 function send(msg){
- if(ws.readyState===WebSocket.OPEN)
-   ws.send(JSON.stringify(msg));
+  if(ws && ws.readyState===WebSocket.OPEN){
+    ws.send(JSON.stringify(msg));
+  }
 }
 
 function addCamera(id){
+  if(cards.has(id)) return;
 
- if(cards.has(id)) return;
+  const card=document.createElement("div");
+  card.className="card";
 
- const card=document.createElement("div");
- card.className="card";
+  const label=document.createElement("div");
+  label.className="label";
+  label.textContent="Camera "+id;
 
- const label=document.createElement("div");
- label.className="label";
- label.textContent="Camera "+id;
+  const wrap=document.createElement("div");
+  wrap.className="video-wrap";
 
- const wrap=document.createElement("div");
- wrap.className="video-wrap";
+  const video=document.createElement("video");
+  video.autoplay=true;
+  video.playsInline=true;
+  video.muted=true;
 
- const video=document.createElement("video");
- video.autoplay=true;
- video.playsInline=true;
- video.muted=true;
+  const btn=document.createElement("button");
+  btn.className="fullscreen-btn";
+  btn.innerHTML="⛶";
+  btn.onclick=()=>{
+    if(wrap.requestFullscreen) wrap.requestFullscreen();
+    else if(wrap.webkitRequestFullscreen) wrap.webkitRequestFullscreen();
+  };
 
- const btn=document.createElement("button");
- btn.className="fullscreen-btn";
- btn.innerHTML="⛶";
+  wrap.append(video,btn);
+  card.append(label,wrap);
+  grid.append(card);
 
- btn.onclick=()=>{
-   if(wrap.requestFullscreen)wrap.requestFullscreen();
-   else if(wrap.webkitRequestFullscreen)wrap.webkitRequestFullscreen();
- };
+  cards.set(id,{card,video});
+}
 
- wrap.append(video,btn);
- card.append(label,wrap);
- grid.append(card);
-
- cards.set(id,{card,video});
+function removeCamera(id){
+  const item=cards.get(id);
+  if(item){
+    item.card.remove();
+    cards.delete(id);
+  }
 }
 
 function destroyPeer(id){
- const pc=peers.get(id);
- if(pc)pc.close();
- peers.delete(id);
- pending.delete(id);
+  const pc=peers.get(id);
+  if(pc) pc.close();
+  peers.delete(id);
+  pending.delete(id);
 }
 
 function createPeer(id){
 
- destroyPeer(id);
- addCamera(id);
+  if(peers.has(id)) return peers.get(id);
 
- const pc=new RTCPeerConnection({
-   iceServers:[{urls:"stun:stun.l.google.com:19302"}]
- });
+  addCamera(id);
 
- peers.set(id,pc);
- pending.set(id,[]);
+  const pc=new RTCPeerConnection({
+    iceServers:[{urls:"stun:stun.l.google.com:19302"}]
+  });
 
- pc.onicecandidate=e=>{
-   if(e.candidate){
-     send({
-       type:"candidate",
-       cameraId:id,
-       candidate:e.candidate
-     });
-   }
- };
+  peers.set(id,pc);
+  pending.set(id,[]);
 
- pc.ontrack=e=>{
+  pc.onicecandidate=e=>{
+    if(e.candidate){
+      send({
+        type:"candidate",
+        cameraId:id,
+        candidate:e.candidate
+      });
+    }
+  };
 
-   const item=cards.get(id);
-   if(!item)return;
+  pc.ontrack=e=>{
+    const item=cards.get(id);
+    if(!item) return;
 
-   const stream=e.streams[0]||new MediaStream([e.track]);
+    item.video.srcObject=e.streams[0];
+    item.video.play().catch(()=>{});
 
-   item.video.srcObject=stream;
+    status.textContent="🟢 Camera is LIVE";
+  };
 
-   item.video.onloadedmetadata=()=>{
-     item.video.play().catch(()=>{});
-   };
+  pc.onconnectionstatechange=()=>{
+    const state=pc.connectionState;
 
-   status.textContent="🟢 Camera is LIVE";
- };
+    if(state==="failed"||state==="closed"){
+      reconnectPeer(id);
+    }
 
- pc.onconnectionstatechange=()=>{
-   if(pc.connectionState==="failed"||
-      pc.connectionState==="disconnected"){
-      reconnect(id);
-   }
- };
+    if(state==="connected"){
+      status.textContent="🟢 Camera is LIVE";
+    }
+  };
 
- return pc;
+  return pc;
 }
 
-async function reconnect(id){
- destroyPeer(id);
- createPeer(id);
+function reconnectPeer(id){
+  destroyPeer(id);
 
- setTimeout(()=>{
-   send({type:"viewer-ready",cameraId:id});
- },300);
+  setTimeout(()=>{
+    createPeer(id);
+    send({type:"viewer-ready",cameraId:id});
+  },500);
 }
 
 async function handleOffer(msg){
 
- const pc=createPeer(msg.cameraId);
+  const pc=createPeer(msg.cameraId);
 
- await pc.setRemoteDescription(
-   new RTCSessionDescription(msg.offer)
- );
+  await pc.setRemoteDescription(msg.offer);
 
- for(const c of pending.get(msg.cameraId)){
-   try{
-     await pc.addIceCandidate(
-       new RTCIceCandidate(c)
-     );
-   }catch{}
- }
+  const list=pending.get(msg.cameraId)||[];
+  for(const c of list){
+    try{
+      await pc.addIceCandidate(c);
+    }catch{}
+  }
+  pending.set(msg.cameraId,[]);
 
- pending.set(msg.cameraId,[]);
+  const answer=await pc.createAnswer();
+  await pc.setLocalDescription(answer);
 
- const answer=await pc.createAnswer();
- await pc.setLocalDescription(answer);
-
- send({
-   type:"answer",
-   cameraId:msg.cameraId,
-   answer:pc.localDescription
- });
+  send({
+    type:"answer",
+    cameraId:msg.cameraId,
+    answer:pc.localDescription
+  });
 }
 
 async function handleCandidate(msg){
 
- const pc=peers.get(msg.cameraId)||createPeer(msg.cameraId);
+  const pc=createPeer(msg.cameraId);
 
- if(!pc.remoteDescription){
-   pending.get(msg.cameraId).push(msg.candidate);
-   return;
- }
+  if(!pc.remoteDescription){
+    pending.get(msg.cameraId).push(msg.candidate);
+    return;
+  }
 
- try{
-   await pc.addIceCandidate(
-     new RTCIceCandidate(msg.candidate)
-   );
- }catch{}
+  try{
+    await pc.addIceCandidate(msg.candidate);
+  }catch{}
 }
 
 function requestAll(){
- cameras.forEach(id=>{
-   createPeer(id);
-   send({type:"viewer-ready",cameraId:id});
- });
+  cameras.forEach(id=>{
+    createPeer(id);
+    send({type:"viewer-ready",cameraId:id});
+  });
 }
 
-ws.onopen=()=>{
- status.textContent="🟡 Waiting for cameras...";
- requestAll();
-};
+function handleMessage(e){
 
-ws.onmessage=async e=>{
+  const msg=JSON.parse(e.data);
 
- const msg=JSON.parse(e.data);
+  if(msg.type==="role"){
+    cameras=msg.cameras||[];
+    requestAll();
+  }
 
- if(msg.type==="role"){
-   cameras=msg.cameras||[];
-   requestAll();
- }
+  if(msg.type==="camera-online"||msg.type==="camera-live"){
 
- if(msg.type==="camera-online"||
-    msg.type==="camera-live"){
-
-   if(!cameras.includes(msg.cameraId))
+    if(!cameras.includes(msg.cameraId))
       cameras.push(msg.cameraId);
 
-   createPeer(msg.cameraId);
-   send({type:"viewer-ready",cameraId:msg.cameraId});
- }
+    createPeer(msg.cameraId);
+    send({type:"viewer-ready",cameraId:msg.cameraId});
+  }
 
- if(msg.type==="camera-offline"){
-   destroyPeer(msg.cameraId);
- }
+  if(msg.type==="camera-offline"){
+    destroyPeer(msg.cameraId);
+    removeCamera(msg.cameraId);
+    cameras=cameras.filter(x=>x!==msg.cameraId);
+  }
 
- if(msg.type==="offer")
-   await handleOffer(msg);
+  if(msg.type==="offer") handleOffer(msg);
+  if(msg.type==="candidate") handleCandidate(msg);
+}
 
- if(msg.type==="candidate")
-   await handleCandidate(msg);
-};
+function connectWS(){
 
-ws.onerror=()=>{
- status.textContent="🔴 Server error";
-};
+  ws=new WebSocket(
+    (location.protocol==="https:"?"wss:":"ws:")
+    +"//"+location.host+"/viewer"
+  );
 
-ws.onclose=()=>{
- status.textContent="🔴 Connection closed";
-};
+  ws.onopen=()=>{
+    reconnectingWS=false;
+    status.textContent="🟡 Waiting for cameras...";
+    requestAll();
+  };
 
-// Auto recover after refresh or black screen
+  ws.onmessage=handleMessage;
+
+  ws.onerror=()=>{
+    status.textContent="🔴 Server error";
+  };
+
+  ws.onclose=()=>{
+
+    status.textContent="🟡 Reconnecting...";
+
+    if(reconnectingWS) return;
+    reconnectingWS=true;
+
+    setTimeout(connectWS,1500);
+  };
+}
+
+connectWS();
+
+/* Recover frozen video */
 setInterval(()=>{
- cards.forEach((item,id)=>{
-   const v=item.video;
-   if(!v.srcObject||
-      v.readyState<2||
-      v.paused||
-      v.ended){
-      reconnect(id);
-   }
- });
-},3000);
+  peers.forEach((pc,id)=>{
+    if(pc.connectionState==="failed"||pc.connectionState==="closed"){
+      reconnectPeer(id);
+    }
+  });
+},5000);
 
 document.addEventListener("visibilitychange",()=>{
- if(!document.hidden)
-   requestAll();
+  if(!document.hidden){
+    requestAll();
+  }
 });
 </script>
 
