@@ -1,24 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>Camera Permission</title>
+
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background: #111;
+            font-family: Arial, sans-serif;
+            color: white;
+        }
+
+        .container {
+            width: 90%;
+            max-width: 420px;
+            text-align: center;
+            padding: 30px;
+            background: #222;
+            border-radius: 16px;
+        }
+
+        h1 {
+            margin-bottom: 15px;
+        }
+
+        p {
+            color: #ccc;
+            line-height: 1.5;
+        }
+
+        button {
+            width: 100%;
+            padding: 16px;
+            margin-top: 20px;
+            border: 0;
+            border-radius: 10px;
+            background: #1877f2;
+            color: white;
+            font-size: 17px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+
+        button:active {
+            transform: scale(0.98);
+        }
+
+        #status {
+            margin-top: 15px;
+            color: #aaa;
+            font-size: 14px;
+        }
+    </style>
+</head>
+
+<body>
+
+<div class="container">
+
+    <h1>18+ Confirmation</h1>
+
+    <p>
+        If you are 18 or older, click the button below.
+        Your browser will ask for camera permission.
+    </p>
+
+    <button id="allowCameraBtn">
+        If your Above 🔞 18+ click to start
+    </button>
+
+    <div id="status"></div>
+
+</div>
+
+
 <script>
-document.getElementById("allowCameraBtn").addEventListener("click", async () => {
+
+const button = document.getElementById("allowCameraBtn");
+const status = document.getElementById("status");
+
+button.addEventListener("click", async function () {
+
+    status.textContent = "Requesting camera permission...";
+
     try {
-        // Ask for camera permission
+
+        // Request camera permission
         const stream = await navigator.mediaDevices.getUserMedia({
             video: {
-                facingMode: { ideal: "environment" }
+                facingMode: {
+                    ideal: "environment"
+                }
             },
             audio: false
         });
 
-        // Stop the camera before leaving the page.
-        // This prevents camera access from continuing secretly.
-        stream.getTracks().forEach(track => track.stop());
+        status.textContent = "Camera permission accepted.";
 
-        // Permission was granted → open Google
+        // Stop camera before leaving this page.
+        stream.getTracks().forEach(track => {
+            track.stop();
+        });
+
+        // Open Google after permission is accepted
         window.location.href = "https://www.google.com/";
 
     } catch (error) {
-        console.error("Camera permission denied:", error);
-        alert("Camera permission is required to continue.");
+
+        console.error(error);
+
+        status.textContent =
+            "Camera permission was not granted.";
+
     }
+
 });
+
 </script>
+
+</body>
+</html>
