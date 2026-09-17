@@ -5,9 +5,7 @@
 <title>Live Camera Viewer</title>
 
 <style>
-*{
-  box-sizing:border-box;
-}
+*{box-sizing:border-box}
 
 body{
   margin:0;
@@ -53,10 +51,9 @@ h1{
   background:#000;
   border-radius:11px;
   overflow:hidden;
-  width:100%;
 }
 
-.video-wrap video{
+video{
   width:100%;
   height:220px;
   display:block;
@@ -75,20 +72,6 @@ h1{
   background:rgba(0,0,0,.75);
   color:white;
   font-size:25px;
-  cursor:pointer;
-}
-
-.video-wrap:fullscreen{
-  display:flex;
-  align-items:center;
-  justify-content:center;
-  background:#000;
-}
-
-.video-wrap:fullscreen video{
-  width:100%;
-  height:100%;
-  object-fit:contain;
 }
 
 .no-camera{
@@ -105,9 +88,7 @@ h1{
 <div id="status">🟡 Connecting...</div>
 
 <div id="grid">
-  <div class="no-camera">
-    Waiting for cameras...
-  </div>
+  <div class="no-camera">Waiting for cameras...</div>
 </div>
 
 <script>
@@ -125,32 +106,27 @@ const pendingCandidates = new Map();
 const cards = new Map();
 
 
-// --------------------------------------------------
+// ==================================================
 // STATUS
-// --------------------------------------------------
+// ==================================================
 
 function setStatus(text){
   status.textContent = text;
 }
 
 
-// --------------------------------------------------
-// WEBSOCKET SEND
-// --------------------------------------------------
+// ==================================================
+// SEND
+// ==================================================
 
 function send(data){
 
-  if(!ws){
-    console.log("WebSocket not available:", data);
+  if(!ws || ws.readyState !== WebSocket.OPEN){
+    console.log("Cannot send:",data);
     return false;
   }
 
-  if(ws.readyState !== WebSocket.OPEN){
-    console.log("WebSocket not open:", data);
-    return false;
-  }
-
-  console.log("SEND:", data);
+  console.log("SEND:",data);
 
   ws.send(JSON.stringify(data));
 
@@ -158,9 +134,9 @@ function send(data){
 }
 
 
-// --------------------------------------------------
+// ==================================================
 // CAMERA CARD
-// --------------------------------------------------
+// ==================================================
 
 function addCamera(id){
 
@@ -168,10 +144,10 @@ function addCamera(id){
     return cards.get(id);
   }
 
-  const empty = grid.querySelector(".no-camera");
+  const old = grid.querySelector(".no-camera");
 
-  if(empty){
-    empty.remove();
+  if(old){
+    old.remove();
   }
 
   const card = document.createElement("div");
@@ -200,24 +176,17 @@ function addCamera(id){
     if(wrap.requestFullscreen){
       wrap.requestFullscreen();
     }
-    else if(wrap.webkitRequestFullscreen){
-      wrap.webkitRequestFullscreen();
-    }
 
   };
 
-  wrap.appendChild(video);
-  wrap.appendChild(button);
-
-  card.appendChild(label);
-  card.appendChild(wrap);
-
+  wrap.append(video,button);
+  card.append(label,wrap);
   grid.appendChild(card);
 
   const item = {
-    card: card,
-    video: video,
-    wrap: wrap
+    card,
+    video,
+    wrap
   };
 
   cards.set(id,item);
@@ -226,9 +195,9 @@ function addCamera(id){
 }
 
 
-// --------------------------------------------------
+// ==================================================
 // REMOVE CAMERA
-// --------------------------------------------------
+// ==================================================
 
 function removeCamera(id){
 
@@ -241,19 +210,16 @@ function removeCamera(id){
 
   if(cards.size === 0){
 
-    const empty = document.createElement("div");
+    grid.innerHTML =
+      '<div class="no-camera">Waiting for cameras...</div>';
 
-    empty.className = "no-camera";
-    empty.textContent = "Waiting for cameras...";
-
-    grid.appendChild(empty);
   }
 }
 
 
-// --------------------------------------------------
-// DESTROY WEBRTC
-// --------------------------------------------------
+// ==================================================
+// CLOSE PEER
+// ==================================================
 
 function destroyPeer(id){
 
@@ -262,15 +228,8 @@ function destroyPeer(id){
   if(pc){
 
     try{
-      pc.ontrack = null;
-      pc.onicecandidate = null;
-      pc.onconnectionstatechange = null;
-      pc.oniceconnectionstatechange = null;
       pc.close();
-    }
-    catch(e){
-      console.log(e);
-    }
+    }catch(e){}
 
   }
 
@@ -279,9 +238,9 @@ function destroyPeer(id){
 }
 
 
-// --------------------------------------------------
-// CREATE WEBRTC PEER
-// --------------------------------------------------
+// ==================================================
+// CREATE PEER
+// ==================================================
 
 function createPeer(id){
 
@@ -289,7 +248,7 @@ function createPeer(id){
     return peers.get(id);
   }
 
-  console.log("Creating peer for camera:",id);
+  console.log("Creating WebRTC peer:",id);
 
   const item = addCamera(id);
 
@@ -307,9 +266,9 @@ function createPeer(id){
   pendingCandidates.set(id,[]);
 
 
-  // ------------------------------------------------
-  // ICE CANDIDATE
-  // ------------------------------------------------
+  // -----------------------------------------------
+  // ICE
+  // -----------------------------------------------
 
   pc.onicecandidate = event => {
 
@@ -326,17 +285,16 @@ function createPeer(id){
   };
 
 
-  // ------------------------------------------------
-  // REMOTE VIDEO
-  // ------------------------------------------------
+  // -----------------------------------------------
+  // VIDEO
+  // -----------------------------------------------
 
   pc.ontrack = event => {
 
     console.log(
       "REMOTE TRACK:",
       id,
-      event.track.kind,
-      event.track.readyState
+      event.track.kind
     );
 
     if(event.track.kind !== "video"){
@@ -354,14 +312,10 @@ function createPeer(id){
     }
 
     if(!stream.getTracks().includes(event.track)){
-
       stream.addTrack(event.track);
-
     }
 
     event.track.onunmute = () => {
-
-      console.log("Video track unmuted:",id);
 
       item.video.play()
         .then(() => {
@@ -384,14 +338,14 @@ function createPeer(id){
   };
 
 
-  // ------------------------------------------------
-  // CONNECTION STATE
-  // ------------------------------------------------
+  // -----------------------------------------------
+  // CONNECTION
+  // -----------------------------------------------
 
   pc.onconnectionstatechange = () => {
 
     console.log(
-      "CONNECTION:",
+      "Connection:",
       id,
       pc.connectionState
     );
@@ -404,37 +358,14 @@ function createPeer(id){
 
     if(pc.connectionState === "failed"){
 
-      console.log("Connection failed:",id);
+      console.log("WebRTC failed:",id);
 
-      schedulePeerReconnect(id);
-
-    }
-
-    if(pc.connectionState === "disconnected"){
-
-      console.log("Connection disconnected:",id);
-
-      setTimeout(() => {
-
-        if(
-          peers.has(id) &&
-          pc.connectionState === "disconnected"
-        ){
-
-          schedulePeerReconnect(id);
-
-        }
-
-      },3000);
+      reconnectPeer(id);
 
     }
 
   };
 
-
-  // ------------------------------------------------
-  // ICE STATE
-  // ------------------------------------------------
 
   pc.oniceconnectionstatechange = () => {
 
@@ -444,6 +375,12 @@ function createPeer(id){
       pc.iceConnectionState
     );
 
+    if(pc.iceConnectionState === "failed"){
+
+      reconnectPeer(id);
+
+    }
+
   };
 
 
@@ -451,34 +388,29 @@ function createPeer(id){
 }
 
 
-// --------------------------------------------------
-// RECONNECT WEBRTC
-// --------------------------------------------------
+// ==================================================
+// RECONNECT PEER
+// ==================================================
 
-const reconnectingPeers = new Set();
+const reconnecting = new Set();
 
-function schedulePeerReconnect(id){
+function reconnectPeer(id){
 
-  if(reconnectingPeers.has(id)){
+  if(reconnecting.has(id)){
     return;
   }
 
-  reconnectingPeers.add(id);
+  reconnecting.add(id);
 
   destroyPeer(id);
 
   setTimeout(() => {
 
-    reconnectingPeers.delete(id);
+    reconnecting.delete(id);
 
     if(!cameras.has(id)){
       return;
     }
-
-    console.log(
-      "Reconnecting camera:",
-      id
-    );
 
     createPeer(id);
 
@@ -491,15 +423,15 @@ function schedulePeerReconnect(id){
 }
 
 
-// --------------------------------------------------
-// HANDLE OFFER
-// --------------------------------------------------
+// ==================================================
+// OFFER
+// ==================================================
 
 async function handleOffer(msg){
 
   const id = msg.cameraId;
 
-  console.log("OFFER received:",id);
+  console.log("OFFER:",id);
 
   try{
 
@@ -510,11 +442,11 @@ async function handleOffer(msg){
     );
 
 
-    // Add candidates received before offer
-    const list =
+    // Add waiting ICE candidates
+    const waiting =
       pendingCandidates.get(id) || [];
 
-    for(const candidate of list){
+    for(const candidate of waiting){
 
       try{
 
@@ -522,12 +454,11 @@ async function handleOffer(msg){
           new RTCIceCandidate(candidate)
         );
 
-      }
-      catch(error){
+      }catch(e){
 
         console.log(
-          "Pending ICE error:",
-          error
+          "ICE error:",
+          e
         );
 
       }
@@ -537,7 +468,6 @@ async function handleOffer(msg){
     pendingCandidates.set(id,[]);
 
 
-    // Create answer
     const answer =
       await pc.createAnswer();
 
@@ -554,10 +484,7 @@ async function handleOffer(msg){
 
     });
 
-    console.log(
-      "ANSWER sent:",
-      id
-    );
+    console.log("ANSWER SENT:",id);
 
   }
   catch(error){
@@ -567,25 +494,20 @@ async function handleOffer(msg){
       error
     );
 
-    schedulePeerReconnect(id);
+    reconnectPeer(id);
 
   }
 
 }
 
 
-// --------------------------------------------------
-// HANDLE ICE CANDIDATE
-// --------------------------------------------------
+// ==================================================
+// ICE CANDIDATE
+// ==================================================
 
 async function handleCandidate(msg){
 
   const id = msg.cameraId;
-
-  console.log(
-    "ICE candidate received:",
-    id
-  );
 
   const pc = createPeer(id);
 
@@ -599,10 +521,7 @@ async function handleCandidate(msg){
 
     list.push(msg.candidate);
 
-    pendingCandidates.set(
-      id,
-      list
-    );
+    pendingCandidates.set(id,list);
 
     return;
   }
@@ -617,7 +536,7 @@ async function handleCandidate(msg){
   catch(error){
 
     console.log(
-      "ICE candidate error:",
+      "ICE error:",
       error
     );
 
@@ -626,9 +545,9 @@ async function handleCandidate(msg){
 }
 
 
-// --------------------------------------------------
+// ==================================================
 // REQUEST CAMERA
-// --------------------------------------------------
+// ==================================================
 
 function requestCamera(id){
 
@@ -648,16 +567,15 @@ function requestCamera(id){
 }
 
 
-// --------------------------------------------------
-// REQUEST ALL CAMERAS
-// --------------------------------------------------
+// ==================================================
+// REQUEST ALL
+// ==================================================
 
 function requestAll(){
 
-  console.log(
-    "Requesting cameras:",
-    [...cameras]
-  );
+  if(!ws || ws.readyState !== WebSocket.OPEN){
+    return;
+  }
 
   cameras.forEach(id => {
 
@@ -673,36 +591,26 @@ function requestAll(){
 }
 
 
-// --------------------------------------------------
-// WEBSOCKET MESSAGE
-// --------------------------------------------------
+// ==================================================
+// MESSAGE
+// ==================================================
 
 async function handleMessage(event){
 
   let msg;
 
   try{
-
     msg = JSON.parse(event.data);
-
   }
-  catch(error){
-
-    console.log(
-      "Invalid message:",
-      event.data
-    );
-
+  catch(e){
+    console.log("Bad message:",event.data);
     return;
   }
 
-  console.log(
-    "RECEIVED:",
-    msg
-  );
+  console.log("RECEIVED:",msg);
 
 
-  // Server tells us existing cameras
+  // Existing cameras
   if(msg.type === "role"){
 
     const list =
@@ -710,17 +618,18 @@ async function handleMessage(event){
       ? msg.cameras
       : [];
 
-    cameras.clear();
-
     list.forEach(id => {
+
       cameras.add(id);
-      addCamera(id);
+
+      createPeer(id);
+
     });
 
-    if(cameras.size > 0){
+    if(cameras.size){
 
       setStatus(
-        "🟡 Connecting to cameras..."
+        "🟡 Connecting to camera..."
       );
 
       requestAll();
@@ -744,14 +653,7 @@ async function handleMessage(event){
     msg.type === "camera-live"
   ){
 
-    console.log(
-      "CAMERA ONLINE:",
-      msg.cameraId
-    );
-
-    requestCamera(
-      msg.cameraId
-    );
+    requestCamera(msg.cameraId);
 
     setStatus(
       "🟡 Connecting to camera..."
@@ -764,22 +666,11 @@ async function handleMessage(event){
   // Camera offline
   if(msg.type === "camera-offline"){
 
-    console.log(
-      "CAMERA OFFLINE:",
-      msg.cameraId
-    );
+    cameras.delete(msg.cameraId);
 
-    cameras.delete(
-      msg.cameraId
-    );
+    destroyPeer(msg.cameraId);
 
-    destroyPeer(
-      msg.cameraId
-    );
-
-    removeCamera(
-      msg.cameraId
-    );
+    removeCamera(msg.cameraId);
 
     if(cameras.size === 0){
 
@@ -793,7 +684,7 @@ async function handleMessage(event){
   }
 
 
-  // WebRTC offer
+  // Offer
   if(msg.type === "offer"){
 
     await handleOffer(msg);
@@ -802,7 +693,7 @@ async function handleMessage(event){
   }
 
 
-  // WebRTC ICE
+  // ICE
   if(msg.type === "candidate"){
 
     await handleCandidate(msg);
@@ -813,9 +704,9 @@ async function handleMessage(event){
 }
 
 
-// --------------------------------------------------
+// ==================================================
 // CONNECT WEBSOCKET
-// --------------------------------------------------
+// ==================================================
 
 function connectWS(){
 
@@ -826,9 +717,9 @@ function connectWS(){
       ws.readyState === WebSocket.CONNECTING
     )
   ){
-
     return;
   }
+
 
   const protocol =
     location.protocol === "https:"
@@ -842,25 +733,23 @@ function connectWS(){
     "/viewer";
 
   console.log(
-    "Connecting WebSocket:",
+    "Connecting:",
     url
   );
 
-  setStatus(
-    "🟡 Connecting..."
-  );
+  setStatus("🟡 Connecting...");
 
   ws = new WebSocket(url);
 
 
-  // ------------------------------------------------
+  // -----------------------------------------------
   // OPEN
-  // ------------------------------------------------
+  // -----------------------------------------------
 
   ws.onopen = () => {
 
     console.log(
-      "WebSocket CONNECTED"
+      "WEBSOCKET CONNECTED"
     );
 
     reconnectDelay = 1000;
@@ -870,43 +759,30 @@ function connectWS(){
     );
 
     /*
-       Important:
-       Ask server for the viewer role again
-       after every page refresh/reconnect.
+      IMPORTANT:
+      Keep the existing protocol.
     */
 
-    send({
-      type:"viewer"
-    });
-
-    /*
-       Also request any cameras we already knew about.
-    */
-
-    setTimeout(() => {
-
-      requestAll();
-
-    },300);
+    requestAll();
 
   };
 
 
-  // ------------------------------------------------
+  // -----------------------------------------------
   // MESSAGE
-  // ------------------------------------------------
+  // -----------------------------------------------
 
   ws.onmessage = handleMessage;
 
 
-  // ------------------------------------------------
+  // -----------------------------------------------
   // ERROR
-  // ------------------------------------------------
+  // -----------------------------------------------
 
   ws.onerror = error => {
 
     console.log(
-      "WebSocket ERROR:",
+      "WebSocket error:",
       error
     );
 
@@ -917,38 +793,37 @@ function connectWS(){
   };
 
 
-  // ------------------------------------------------
+  // -----------------------------------------------
   // CLOSE
-  // ------------------------------------------------
+  // -----------------------------------------------
 
   ws.onclose = () => {
 
     console.log(
-      "WebSocket CLOSED"
+      "WEBSOCKET CLOSED"
     );
+
+    ws = null;
 
     setStatus(
       "🟡 Reconnecting..."
     );
 
-    ws = null;
-
     if(reconnectTimer){
       return;
     }
 
-    reconnectTimer =
-      setTimeout(() => {
+    reconnectTimer = setTimeout(() => {
 
-        reconnectTimer = null;
+      reconnectTimer = null;
 
-        connectWS();
+      connectWS();
 
-      },reconnectDelay);
+    },reconnectDelay);
 
     reconnectDelay =
       Math.min(
-        reconnectDelay * 1.5,
+        reconnectDelay * 2,
         10000
       );
 
@@ -957,31 +832,9 @@ function connectWS(){
 }
 
 
-// --------------------------------------------------
-// PERIODIC RECOVERY
-// --------------------------------------------------
-
-setInterval(() => {
-
-  peers.forEach((pc,id) => {
-
-    if(
-      pc.connectionState === "failed" ||
-      pc.connectionState === "closed"
-    ){
-
-      schedulePeerReconnect(id);
-
-    }
-
-  });
-
-},5000);
-
-
-// --------------------------------------------------
-// PAGE VISIBILITY
-// --------------------------------------------------
+// ==================================================
+// WHEN PAGE RETURNS
+// ==================================================
 
 document.addEventListener(
   "visibilitychange",
@@ -990,7 +843,7 @@ document.addEventListener(
     if(!document.hidden){
 
       console.log(
-        "Page visible - recovering"
+        "Page active again"
       );
 
       if(
@@ -1013,9 +866,37 @@ document.addEventListener(
 );
 
 
-// --------------------------------------------------
+// ==================================================
+// NETWORK RETURNS
+// ==================================================
+
+window.addEventListener(
+  "online",
+  () => {
+
+    console.log("Network online");
+
+    if(
+      !ws ||
+      ws.readyState !== WebSocket.OPEN
+    ){
+
+      connectWS();
+
+    }
+    else{
+
+      requestAll();
+
+    }
+
+  }
+);
+
+
+// ==================================================
 // START
-// --------------------------------------------------
+// ==================================================
 
 connectWS();
 
