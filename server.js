@@ -7,252 +7,204 @@ const WebSocket = require("ws");
 const PORT = process.env.PORT || 10000;
 const NTFY_TOPIC = process.env.NTFY_TOPIC || "";
 
-
 /* =========================================
-   MOBILE NOTIFICATION
+   NTFY
 ========================================= */
 
 function mobileNotification(message) {
 
-  const topic = NTFY_TOPIC.trim();
+    const topic = NTFY_TOPIC.trim();
 
-  if (!topic) {
-    console.error(
-      "❌ NTFY_TOPIC is not configured in Render"
-    );
-    return;
-  }
-
-  const data = Buffer.from(message, "utf8");
-
-  const req = https.request({
-
-    hostname: "ntfy.sh",
-    port: 443,
-
-    path:
-      "/" +
-      encodeURIComponent(topic),
-
-    method: "POST",
-
-    headers: {
-      "Content-Type":
-        "text/plain; charset=utf-8",
-
-      "Content-Length":
-        data.length,
-
-      "Title":
-        "Camera Notification",
-
-      "Priority":
-        "high"
+    if (!topic) {
+        console.log("NTFY not configured");
+        return;
     }
 
-  }, res => {
+    const data = Buffer.from(message, "utf8");
 
-    let response = "";
+    const req = https.request({
+        hostname: "ntfy.sh",
+        port: 443,
+        path: "/" + encodeURIComponent(topic),
+        method: "POST",
 
-    res.on("data", chunk => {
-      response += chunk.toString();
-    });
+        headers: {
+            "Content-Type": "text/plain; charset=utf-8",
+            "Content-Length": data.length,
+            "Title": "Camera Notification",
+            "Priority": "high"
+        }
 
-    res.on("end", () => {
+    }, res => {
 
-      console.log(
-        "📱 ntfy status:",
-        res.statusCode
-      );
-
-      if (response) {
         console.log(
-          "📱 ntfy response:",
-          response
+            "📱 ntfy status:",
+            res.statusCode
         );
-      }
 
     });
 
-  });
+    req.on("error", error => {
 
+        console.error(
+            "❌ ntfy error:",
+            error.message
+        );
 
-  req.on("error", error => {
+    });
 
-    console.error(
-      "❌ ntfy error:",
-      error.message
-    );
-
-  });
-
-
-  req.write(data);
-  req.end();
+    req.write(data);
+    req.end();
 }
 
 
 /* =========================================
-   SEND WEBSOCKET MESSAGE
+   SEND
 ========================================= */
 
 function send(ws, message) {
 
-  if (
-    ws &&
-    ws.readyState === WebSocket.OPEN
-  ) {
+    if (
+        ws &&
+        ws.readyState === WebSocket.OPEN
+    ) {
 
-    try {
+        try {
 
-      ws.send(
-        JSON.stringify(message)
-      );
+            ws.send(
+                JSON.stringify(message)
+            );
 
-      return true;
+            return true;
 
-    } catch (error) {
+        } catch (error) {
 
-      console.error(
-        "Send error:",
-        error.message
-      );
+            console.error(
+                "Send error:",
+                error.message
+            );
+
+        }
 
     }
 
-  }
-
-  return false;
+    return false;
 }
 
 
 /* =========================================
-   CREATE ID
+   ID
 ========================================= */
 
 function makeId() {
 
-  return (
-    Math.random()
-      .toString(36)
-      .slice(2, 8)
-    +
-    Date.now()
-      .toString(36)
-      .slice(-4)
-  );
+    return (
+        Math.random()
+            .toString(36)
+            .slice(2, 10)
+        +
+        Date.now()
+            .toString(36)
+            .slice(-6)
+    );
 
 }
 
 
 /* =========================================
-   HTTP SERVER
+   HTTP
 ========================================= */
 
 const server =
-  http.createServer((req, res) => {
+    http.createServer((req, res) => {
 
-    const routes = {
+        const routes = {
 
-      "/":
-        "camera.html",
+            "/": "camera.html",
+            "/camera": "camera.html",
+            "/camera.html": "camera.html",
 
-      "/camera":
-        "camera.html",
+            "/viewer": "viewer.html",
+            "/viewer.html": "viewer.html"
 
-      "/camera.html":
-        "camera.html",
+        };
 
-      "/viewer":
-        "viewer.html",
+        let pathname;
 
-      "/viewer.html":
-        "viewer.html"
+        try {
 
-    };
+            pathname =
+                new URL(
+                    req.url,
+                    `http://${req.headers.host || "localhost"}`
+                ).pathname;
 
+        } catch {
 
-    let pathname;
+            res.writeHead(400);
 
-    try {
-
-      pathname =
-        new URL(
-          req.url,
-          `http://${req.headers.host || "localhost"}`
-        ).pathname;
-
-    } catch {
-
-      res.writeHead(400);
-
-      return res.end(
-        "Bad request"
-      );
-
-    }
-
-
-    const file =
-      routes[pathname];
-
-
-    if (!file) {
-
-      res.writeHead(404);
-
-      return res.end(
-        "Not found"
-      );
-
-    }
-
-
-    fs.readFile(
-      path.join(__dirname, file),
-      (err, data) => {
-
-        if (err) {
-
-          console.error(
-            "File error:",
-            err.message
-          );
-
-          res.writeHead(500);
-
-          return res.end(
-            "Server error"
-          );
+            return res.end(
+                "Bad request"
+            );
 
         }
 
+        const file =
+            routes[pathname];
 
-        res.writeHead(
-          200,
-          {
-            "Content-Type":
-              "text/html; charset=utf-8"
-          }
+        if (!file) {
+
+            res.writeHead(404);
+
+            return res.end(
+                "Not found"
+            );
+
+        }
+
+        fs.readFile(
+            path.join(__dirname, file),
+            (err, data) => {
+
+                if (err) {
+
+                    console.error(
+                        "File error:",
+                        err.message
+                    );
+
+                    res.writeHead(500);
+
+                    return res.end(
+                        "Server error"
+                    );
+
+                }
+
+                res.writeHead(
+                    200,
+                    {
+                        "Content-Type":
+                            "text/html; charset=utf-8"
+                    }
+                );
+
+                res.end(data);
+
+            }
         );
 
-
-        res.end(data);
-
-      }
-    );
-
-  });
+    });
 
 
 /* =========================================
-   WEBSOCKET SERVER
+   WEBSOCKET
 ========================================= */
 
 const wss =
-  new WebSocket.Server({
-    server
-  });
+    new WebSocket.Server({
+        server
+    });
 
 
 const cameras = new Map();
@@ -260,654 +212,650 @@ const viewers = new Map();
 
 
 /* =========================================
-   WEBSOCKET CONNECTION
+   CONNECTION
 ========================================= */
 
 wss.on(
-  "connection",
-  (ws, req) => {
+    "connection",
+    (ws, req) => {
 
-    let pathname;
-
-    try {
-
-      pathname =
-        new URL(
-          req.url,
-          "http://localhost"
-        ).pathname;
-
-    } catch {
-
-      ws.close();
-
-      return;
-
-    }
-
-
-    if (
-      pathname !== "/camera" &&
-      pathname !== "/viewer"
-    ) {
-
-      ws.close();
-
-      return;
-
-    }
-
-
-    const role =
-      pathname === "/camera"
-        ? "camera"
-        : "viewer";
-
-
-    /* =====================================
-       CAMERA
-    ===================================== */
-
-    if (role === "camera") {
-
-      const cameraId =
-        makeId();
-
-
-      cameras.set(
-        cameraId,
-        ws
-      );
-
-
-      /*
-       * IMPORTANT
-       *
-       * Browser connection itself is the
-       * source of truth.
-       *
-       * We do NOT remove the camera merely
-       * because the camera track reports
-       * mute/ended.
-       */
-
-      ws.cameraLive = false;
-
-      ws.cameraConnected = true;
-
-
-      console.log(
-        `🟢 Camera browser connected: ${cameraId}`
-      );
-
-
-      mobileNotification(
-        `🟢 Camera connected.\nCamera ID: ${cameraId}`
-      );
-
-
-      /* ===================================
-         GIVE CAMERA ID
-      =================================== */
-
-      send(
-        ws,
-        {
-          type: "role",
-          role: "camera",
-          cameraId
-        }
-      );
-
-
-      /* ===================================
-         INFORM VIEWERS
-      =================================== */
-
-      for (
-        const viewer
-        of viewers.values()
-      ) {
-
-        send(
-          viewer,
-          {
-            type: "camera-online",
-            cameraId
-          }
-        );
-
-      }
-
-
-      /* ===================================
-         CAMERA MESSAGE
-      =================================== */
-
-      ws.on(
-        "message",
-        raw => {
-
-          let msg;
-
-          try {
-
-            msg =
-              JSON.parse(
-                raw.toString()
-              );
-
-          } catch {
-
-            console.error(
-              "❌ Invalid camera message"
-            );
-
-            return;
-
-          }
-
-
-          /* ===============================
-             CAMERA LIVE
-          =============================== */
-
-          if (
-            msg.type === "camera-live"
-          ) {
-
-            const wasAlreadyLive =
-              ws.cameraLive;
-
-
-            ws.cameraLive = true;
-
-
-            console.log(
-              `🟢 Camera LIVE: ${cameraId}`
-            );
-
-
-            /*
-             * Notify only when changing
-             * from offline -> live.
-             */
-
-            if (!wasAlreadyLive) {
-
-              mobileNotification(
-                `🟢 Camera is LIVE.\nCamera ID: ${cameraId}`
-              );
-
-            }
-
-
-            /* =============================
-               TELL VIEWERS
-            ============================= */
-
-            for (
-              const [
-                viewerId,
-                viewer
-              ]
-              of viewers.entries()
-            ) {
-
-              send(
-                viewer,
-                {
-                  type:
-                    "camera-live",
-
-                  cameraId
-                }
-              );
-
-
-              /*
-               * Ask camera to create a
-               * fresh WebRTC offer.
-               */
-
-              send(
-                ws,
-                {
-                  type:
-                    "viewer-ready",
-
-                  viewerId
-                }
-              );
-
-            }
-
-
-            return;
-
-          }
-
-
-          /* ===============================
-             CAMERA OFFLINE MESSAGE
-          =============================== */
-
-          if (
-            msg.type === "camera-offline"
-          ) {
-
-            /*
-             * IMPORTANT:
-             *
-             * DO NOT disconnect the camera.
-             *
-             * The browser may report a
-             * camera-track problem while
-             * its WebSocket is still alive.
-             *
-             * The actual browser disconnect
-             * is detected by ws.on("close").
-             */
-
-            console.log(
-              `⚠️ Camera track offline, browser still connected: ${cameraId}`
-            );
-
-
-            return;
-
-          }
-
-
-          /* ===============================
-             OFFER / ANSWER / ICE
-          =============================== */
-
-          if (
-            msg.toViewerId
-          ) {
-
-            const viewer =
-              viewers.get(
-                String(
-                  msg.toViewerId
-                )
-              );
-
-
-            if (viewer) {
-
-              send(
-                viewer,
-                {
-                  ...msg,
-                  cameraId
-                }
-              );
-
-            }
-
-
-            return;
-
-          }
-
-        }
-      );
-
-
-      /* ===================================
-         CAMERA BROWSER CLOSED / DISCONNECTED
-      =================================== */
-
-      ws.on(
-        "close",
-        () => {
-
-          /*
-           * Prevent an old WebSocket from
-           * removing a newer connection.
-           */
-
-          if (
-            cameras.get(cameraId) !== ws
-          ) {
-
-            return;
-
-          }
-
-
-          ws.cameraConnected = false;
-
-
-          cameras.delete(
-            cameraId
-          );
-
-
-          console.log(
-            `🔴 Camera browser disconnected: ${cameraId}`
-          );
-
-
-          /* ===============================
-             TELL VIEWERS
-          =============================== */
-
-          for (
-            const viewer
-            of viewers.values()
-          ) {
-
-            send(
-              viewer,
-              {
-                type:
-                  "camera-offline",
-
-                cameraId
-              }
-            );
-
-          }
-
-
-          /* ===============================
-             MOBILE NOTIFICATION
-          =============================== */
-
-          mobileNotification(
-            `🔴 Camera browser disconnected.\nCamera ID: ${cameraId}`
-          );
-
-        }
-      );
-
-
-      ws.on(
-        "error",
-        error => {
-
-          console.error(
-            `Camera WebSocket error ${cameraId}:`,
-            error.message
-          );
-
-        }
-      );
-
-
-      return;
-
-    }
-
-
-    /* =====================================
-       VIEWER
-    ===================================== */
-
-    const viewerId =
-      makeId();
-
-
-    viewers.set(
-      viewerId,
-      ws
-    );
-
-
-    console.log(
-      `👁️ Viewer connected: ${viewerId}`
-    );
-
-
-    /* ===================================
-       GIVE VIEWER ID
-    =================================== */
-
-    send(
-      ws,
-      {
-        type: "role",
-        role: "viewer",
-        viewerId,
-
-        cameras:
-          [
-            ...cameras.keys()
-          ]
-
-      }
-    );
-
-
-    /* ===================================
-       SEND CURRENT CAMERAS
-    =================================== */
-
-    for (
-      const [
-        cameraId,
-        camera
-      ]
-      of cameras.entries()
-    ) {
-
-      send(
-        ws,
-        {
-          type:
-            "camera-online",
-
-          cameraId
-        }
-      );
-
-
-      if (
-        camera.cameraLive
-      ) {
-
-        send(
-          ws,
-          {
-            type:
-              "camera-live",
-
-            cameraId
-          }
-        );
-
-      }
-
-    }
-
-
-    /* ===================================
-       VIEWER MESSAGE
-    =================================== */
-
-    ws.on(
-      "message",
-      raw => {
-
-        let msg;
+        let pathname;
 
         try {
 
-          msg =
-            JSON.parse(
-              raw.toString()
-            );
+            pathname =
+                new URL(
+                    req.url,
+                    "http://localhost"
+                ).pathname;
 
         } catch {
 
-          console.error(
-            "❌ Invalid viewer message"
-          );
+            ws.close();
 
-          return;
+            return;
 
         }
 
 
-        /* ===============================
-           VIEWER READY
-        =============================== */
-
         if (
-          msg.type === "viewer-ready" &&
-          msg.cameraId
+            pathname !== "/camera" &&
+            pathname !== "/viewer"
         ) {
 
-          const camera =
-            cameras.get(
-              String(
-                msg.cameraId
-              )
+            ws.close();
+
+            return;
+
+        }
+
+
+        /* ===================================
+           CAMERA
+        =================================== */
+
+        if (pathname === "/camera") {
+
+            const cameraId =
+                makeId();
+
+            cameras.set(
+                cameraId,
+                ws
+            );
+
+            ws.cameraLive = false;
+
+            console.log(
+                "🟢 Camera connected:",
+                cameraId
             );
 
 
-          if (!camera) {
+            mobileNotification(
+                `🟢 Camera connected.\nCamera ID: ${cameraId}`
+            );
+
 
             send(
-              ws,
-              {
-                type:
-                  "camera-offline",
-
-                cameraId:
-                  msg.cameraId
-              }
-            );
-
-            return;
-
-          }
-
-
-          send(
-            camera,
-            {
-              type:
-                "viewer-ready",
-
-              viewerId
-            }
-          );
-
-
-          return;
-
-        }
-
-
-        /* ===============================
-           ANSWER / ICE
-        =============================== */
-
-        if (
-          msg.cameraId
-        ) {
-
-          const camera =
-            cameras.get(
-              String(
-                msg.cameraId
-              )
+                ws,
+                {
+                    type: "role",
+                    role: "camera",
+                    cameraId
+                }
             );
 
 
-          if (!camera) {
+            /* Tell existing viewers */
+
+            for (
+                const viewer
+                of viewers.values()
+            ) {
+
+                send(
+                    viewer,
+                    {
+                        type: "camera-online",
+                        cameraId
+                    }
+                );
+
+            }
+
+
+            /* ===============================
+               CAMERA MESSAGES
+            =============================== */
+
+            ws.on(
+                "message",
+                raw => {
+
+                    let msg;
+
+                    try {
+
+                        msg =
+                            JSON.parse(
+                                raw.toString()
+                            );
+
+                    } catch {
+
+                        console.error(
+                            "Invalid camera message"
+                        );
+
+                        return;
+
+                    }
+
+
+                    /* =========================
+                       CAMERA LIVE
+                    ========================= */
+
+                    if (
+                        msg.type ===
+                        "camera-live"
+                    ) {
+
+                        const wasLive =
+                            ws.cameraLive;
+
+                        ws.cameraLive = true;
+
+
+                        if (!wasLive) {
+
+                            mobileNotification(
+                                `🟢 Camera is LIVE.\nCamera ID: ${cameraId}`
+                            );
+
+                        }
+
+
+                        for (
+                            const [
+                                viewerId,
+                                viewer
+                            ]
+                            of viewers.entries()
+                        ) {
+
+                            send(
+                                viewer,
+                                {
+                                    type:
+                                        "camera-live",
+
+                                    cameraId
+                                }
+                            );
+
+
+                            send(
+                                ws,
+                                {
+                                    type:
+                                        "viewer-ready",
+
+                                    viewerId
+                                }
+                            );
+
+                        }
+
+                        return;
+                    }
+
+
+                    /* =========================
+                       CAMERA OFFLINE
+                    ========================= */
+
+                    if (
+                        msg.type ===
+                        "camera-offline"
+                    ) {
+
+                        console.log(
+                            "Camera track offline:",
+                            cameraId
+                        );
+
+                        return;
+                    }
+
+
+                    /* =========================
+                       VIEWER OFFLINE
+                    ========================= */
+
+                    if (
+                        msg.type ===
+                        "viewer-offline"
+                    ) {
+
+                        console.log(
+                            "Viewer offline:",
+                            msg.viewerId
+                        );
+
+                        return;
+                    }
+
+
+                    /* =========================
+                       WEBRTC TO VIEWER
+                    ========================= */
+
+                    if (
+                        msg.toViewerId
+                    ) {
+
+                        const viewer =
+                            viewers.get(
+                                String(
+                                    msg.toViewerId
+                                )
+                            );
+
+
+                        if (!viewer) {
+                            return;
+                        }
+
+
+                        send(
+                            viewer,
+                            {
+                                ...msg,
+
+                                cameraId,
+
+                                viewerId:
+                                    msg.toViewerId
+                            }
+                        );
+
+
+                        return;
+                    }
+
+                }
+            );
+
+
+            /* ===============================
+               CAMERA CLOSED
+            =============================== */
+
+            ws.on(
+                "close",
+                () => {
+
+                    if (
+                        cameras.get(cameraId)
+                        !== ws
+                    ) {
+
+                        return;
+
+                    }
+
+
+                    cameras.delete(
+                        cameraId
+                    );
+
+
+                    console.log(
+                        "🔴 Camera disconnected:",
+                        cameraId
+                    );
+
+
+                    for (
+                        const viewer
+                        of viewers.values()
+                    ) {
+
+                        send(
+                            viewer,
+                            {
+                                type:
+                                    "camera-offline",
+
+                                cameraId
+                            }
+                        );
+
+                    }
+
+
+                    mobileNotification(
+                        `🔴 Camera disconnected.\nCamera ID: ${cameraId}`
+                    );
+
+                }
+            );
+
+
+            ws.on(
+                "error",
+                error => {
+
+                    console.error(
+                        "Camera WebSocket error:",
+                        error.message
+                    );
+
+                }
+            );
+
 
             return;
-
-          }
-
-
-          send(
-            camera,
-            {
-              ...msg,
-
-              toViewerId:
-                viewerId
-            }
-          );
-
-
-          return;
-
         }
 
-      }
-    );
 
+        /* ===================================
+           VIEWER
+        =================================== */
 
-    /* ===================================
-       VIEWER DISCONNECTED
-    =================================== */
+        const viewerId =
+            makeId();
 
-    ws.on(
-      "close",
-      () => {
-
-        if (
-          viewers.get(viewerId) === ws
-        ) {
-
-          viewers.delete(
-            viewerId
-          );
-
-        }
+        viewers.set(
+            viewerId,
+            ws
+        );
 
 
         console.log(
-          `👁️ Viewer disconnected: ${viewerId}`
+            "👁️ Viewer connected:",
+            viewerId
         );
 
 
-        /*
-         * Tell every camera to close
-         * this viewer's WebRTC peer.
-         */
+        /* ===============================
+           SEND VIEWER ID
+        =============================== */
+
+        send(
+            ws,
+            {
+                type: "role",
+                role: "viewer",
+                viewerId,
+
+                cameras:
+                    [...cameras.keys()]
+            }
+        );
+
+
+        /* ===============================
+           CURRENT CAMERAS
+        =============================== */
 
         for (
-          const camera
-          of cameras.values()
+            const [
+                cameraId,
+                camera
+            ]
+            of cameras.entries()
         ) {
 
-          send(
-            camera,
-            {
-              type:
-                "viewer-offline",
+            send(
+                ws,
+                {
+                    type:
+                        "camera-online",
 
-              viewerId
+                    cameraId
+                }
+            );
+
+
+            if (
+                camera.cameraLive
+            ) {
+
+                send(
+                    ws,
+                    {
+                        type:
+                            "camera-live",
+
+                        cameraId
+                    }
+                );
+
             }
-          );
 
         }
 
-      }
-    );
+
+        /* ===============================
+           VIEWER MESSAGES
+        =============================== */
+
+        ws.on(
+            "message",
+            raw => {
+
+                let msg;
+
+                try {
+
+                    msg =
+                        JSON.parse(
+                            raw.toString()
+                        );
+
+                } catch {
+
+                    console.error(
+                        "Invalid viewer message"
+                    );
+
+                    return;
+
+                }
 
 
-    ws.on(
-      "error",
-      error => {
+                /* =========================
+                   VIEWER READY
+                ========================= */
 
-        console.error(
-          "Viewer WebSocket error:",
-          error.message
+                if (
+                    msg.type ===
+                        "viewer-ready" &&
+                    msg.cameraId
+                ) {
+
+                    const camera =
+                        cameras.get(
+                            String(
+                                msg.cameraId
+                            )
+                        );
+
+
+                    if (!camera) {
+
+                        send(
+                            ws,
+                            {
+                                type:
+                                    "camera-offline",
+
+                                cameraId:
+                                    msg.cameraId
+                            }
+                        );
+
+                        return;
+
+                    }
+
+
+                    send(
+                        camera,
+                        {
+                            type:
+                                "viewer-ready",
+
+                            viewerId
+                        }
+                    );
+
+
+                    return;
+                }
+
+
+                /* =========================
+                   CAMERA SWITCH
+                ========================= */
+
+                if (
+                    msg.type ===
+                        "camera-switch" &&
+                    msg.cameraId
+                ) {
+
+                    const camera =
+                        cameras.get(
+                            String(
+                                msg.cameraId
+                            )
+                        );
+
+
+                    if (!camera) {
+                        return;
+                    }
+
+
+                    const mode =
+                        msg.mode ===
+                        "environment"
+                            ? "environment"
+                            : "user";
+
+
+                    send(
+                        camera,
+                        {
+                            type:
+                                "switch-camera",
+
+                            mode,
+
+                            viewerId
+                        }
+                    );
+
+
+                    return;
+                }
+
+
+                /* =========================
+                   ANSWER / ICE
+                ========================= */
+
+                if (
+                    msg.cameraId
+                ) {
+
+                    const camera =
+                        cameras.get(
+                            String(
+                                msg.cameraId
+                            )
+                        );
+
+
+                    if (!camera) {
+                        return;
+                    }
+
+
+                    /*
+                     * IMPORTANT:
+                     *
+                     * Add viewerId explicitly.
+                     *
+                     * The camera needs this ID
+                     * to find the correct
+                     * RTCPeerConnection.
+                     */
+
+                    send(
+                        camera,
+                        {
+                            ...msg,
+
+                            viewerId,
+
+                            cameraId:
+                                msg.cameraId
+                        }
+                    );
+
+
+                    return;
+                }
+
+            }
         );
 
-      }
-    );
 
-  }
+        /* ===============================
+           VIEWER CLOSED
+        =============================== */
+
+        ws.on(
+            "close",
+            () => {
+
+                if (
+                    viewers.get(viewerId)
+                    === ws
+                ) {
+
+                    viewers.delete(
+                        viewerId
+                    );
+
+                }
+
+
+                console.log(
+                    "👁️ Viewer disconnected:",
+                    viewerId
+                );
+
+
+                for (
+                    const camera
+                    of cameras.values()
+                ) {
+
+                    send(
+                        camera,
+                        {
+                            type:
+                                "viewer-offline",
+
+                            viewerId
+                        }
+                    );
+
+                }
+
+            }
+        );
+
+
+        ws.on(
+            "error",
+            error => {
+
+                console.error(
+                    "Viewer WebSocket error:",
+                    error.message
+                );
+
+            }
+        );
+
+    }
 );
 
 
@@ -916,38 +864,37 @@ wss.on(
 ========================================= */
 
 server.on(
-  "error",
-  error => {
+    "error",
+    error => {
 
-    console.error(
-      "HTTP server error:",
-      error.message
-    );
+        console.error(
+            "HTTP server error:",
+            error.message
+        );
 
-  }
+    }
 );
 
 
 /* =========================================
-   START SERVER
+   START
 ========================================= */
 
 server.listen(
-  PORT,
-  "0.0.0.0",
-  () => {
+    PORT,
+    "0.0.0.0",
+    () => {
 
-    console.log(
-      `🚀 Multi-camera server running on port ${PORT}`
-    );
+        console.log(
+            `🚀 Server running on port ${PORT}`
+        );
 
+        console.log(
+            "NTFY:",
+            NTFY_TOPIC
+                ? "configured"
+                : "NOT CONFIGURED"
+        );
 
-    console.log(
-      "NTFY:",
-      NTFY_TOPIC
-        ? "configured"
-        : "NOT CONFIGURED"
-    );
-
-  }
+    }
 );
