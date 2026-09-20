@@ -1287,4 +1287,52 @@ server.listen(
         );
 
         console.log(
-    
+            "Port:",
+            PORT
+        );
+
+        console.log(
+            "Camera:",
+            "/camera"
+        );
+
+        console.log(
+            "Viewer:",
+            "/viewer"
+        );
+
+        console.log(
+            "Health:",
+            "/health"
+        );
+
+        console.log(
+            "NTFY:",
+            NTFY_TOPIC
+                ? "Enabled"
+                : "Disabled"
+        );
+
+        console.log(
+            "================================="
+        );
+
+    }
+);
+
+
+/* =========================================================
+   SERVER ERROR
+========================================================= */
+
+server.on(
+    "error",
+    error => {
+
+        console.error(
+            "Server error:",
+            error
+        );
+
+    }
+);
