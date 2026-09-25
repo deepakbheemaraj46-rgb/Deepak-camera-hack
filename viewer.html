@@ -28,10 +28,6 @@ body {
     font-family: Arial, sans-serif;
 }
 
-/* =========================================================
-   MAIN APPLICATION
-========================================================= */
-
 #app {
     width: 100%;
     height: 100%;
@@ -39,220 +35,119 @@ body {
     background: #000;
 }
 
-/* =========================================================
-   STATUS
-========================================================= */
-
 #status {
     position: absolute;
     top: 15px;
     left: 50%;
     transform: translateX(-50%);
-
     z-index: 100;
-
     padding: 8px 14px;
     border-radius: 20px;
-
     color: white;
     background: rgba(0,0,0,.65);
-
     font-size: 14px;
     white-space: nowrap;
 }
 
-/* =========================================================
-   CAMERA GRID
-   Only ONE camera is displayed at a time.
-========================================================= */
-
 #grid {
     width: 100%;
     height: 100%;
-
     position: relative;
-
     overflow: hidden;
-
     background: #000;
 }
-
-/* =========================================================
-   CAMERA CARD
-========================================================= */
 
 .camera-card {
     width: 100%;
     height: 100%;
-
     position: absolute;
     top: 0;
     left: 0;
-
     display: none;
-
     background: #000;
-
     overflow: hidden;
 }
 
-/* Currently selected camera */
 .camera-card.active {
     display: block;
 }
 
-/* =========================================================
-   VIDEO
-========================================================= */
-
 .camera-card video {
     width: 100%;
     height: 100%;
-
     display: block;
-
     object-fit: cover;
     object-position: center center;
-
     background: #000;
 }
 
-/* =========================================================
-   CAMERA NAME
-========================================================= */
-
 .camera-name {
     position: absolute;
-
     left: 12px;
     bottom: 12px;
-
     padding: 6px 10px;
-
     color: white;
     background: rgba(0,0,0,.55);
-
     border-radius: 8px;
-
     font-size: 13px;
-
     z-index: 10;
 }
-
-/* =========================================================
-   LIVE INDICATOR
-========================================================= */
 
 .live {
     position: absolute;
-
     top: 15px;
     right: 15px;
-
     padding: 6px 10px;
-
     background: rgba(180,0,0,.85);
-
     color: white;
-
     border-radius: 8px;
-
     font-size: 12px;
     font-weight: bold;
-
     z-index: 10;
 }
 
-/* =========================================================
-   RECONNECT BUTTON
-========================================================= */
-
 #reconnect {
     position: absolute;
-
     bottom: 20px;
     left: 50%;
-
     transform: translateX(-50%);
-
     z-index: 200;
-
     border: none;
-
     border-radius: 25px;
-
     padding: 11px 20px;
-
     background: rgba(255,255,255,.9);
-
     color: #111;
-
     font-size: 14px;
     font-weight: bold;
-
     display: none;
 }
-
-#reconnect:active {
-    transform: translateX(-50%) scale(.96);
-}
-
-/* =========================================================
-   NEXT CAMERA BUTTON
-========================================================= */
 
 #nextCamera {
     position: absolute;
-
     right: 15px;
     bottom: 20px;
-
     z-index: 200;
-
     border: none;
-
     border-radius: 25px;
-
     padding: 11px 18px;
-
     background: rgba(255,255,255,.9);
-
     color: #111;
-
     font-size: 14px;
     font-weight: bold;
-
     display: none;
 }
 
-#nextCamera:active {
-    transform: scale(.96);
-}
-
-/* =========================================================
-   CAMERA COUNTER
-========================================================= */
-
 #cameraCounter {
     position: absolute;
-
     left: 50%;
     bottom: 22px;
-
     transform: translateX(-50%);
-
     z-index: 150;
-
     padding: 7px 12px;
-
     border-radius: 20px;
-
     background: rgba(0,0,0,.65);
-
     color: white;
-
     font-size: 13px;
-
     display: none;
 }
 </style>
@@ -262,33 +157,19 @@ body {
 
 <div id="app">
 
-    <!-- STATUS -->
-
     <div id="status">
         🟡 Waiting for cameras...
     </div>
 
-
-    <!-- CAMERAS -->
-
     <div id="grid"></div>
-
-
-    <!-- RECONNECT -->
 
     <button id="reconnect">
         🔄 Reconnect
     </button>
 
-
-    <!-- NEXT CAMERA -->
-
     <button id="nextCamera">
         ▶ Next
     </button>
-
-
-    <!-- CAMERA NUMBER -->
 
     <div id="cameraCounter">
         Camera 1 / 1
@@ -306,10 +187,15 @@ body {
 ========================================================= */
 
 const WS_PROTOCOL =
-    location.protocol === "https:" ? "wss:" : "ws:";
+    location.protocol === "https:"
+        ? "wss:"
+        : "ws:";
 
 const WS_URL =
-    WS_PROTOCOL + "//" + location.host + "/viewer";
+    WS_PROTOCOL +
+    "//" +
+    location.host +
+    "/viewer";
 
 
 /* =========================================================
@@ -322,22 +208,14 @@ const cameras = new Set();
 
 const peers = new Map();
 
-const pendingCandidates = new Map();
+const pendingCandidates =
+    new Map();
 
 const cards = new Map();
 
-
-/*
- * List of cameras in the order they were received.
- */
 const cameraList = [];
 
-
-/*
- * Currently displayed camera.
- */
 let activeIndex = 0;
-
 
 let reconnectTimer = null;
 
@@ -349,19 +227,29 @@ let manuallyClosed = false;
 ========================================================= */
 
 const statusEl =
-    document.getElementById("status");
+    document.getElementById(
+        "status"
+    );
 
 const gridEl =
-    document.getElementById("grid");
+    document.getElementById(
+        "grid"
+    );
 
 const reconnectBtn =
-    document.getElementById("reconnect");
+    document.getElementById(
+        "reconnect"
+    );
 
 const nextCameraBtn =
-    document.getElementById("nextCamera");
+    document.getElementById(
+        "nextCamera"
+    );
 
 const cameraCounter =
-    document.getElementById("cameraCounter");
+    document.getElementById(
+        "cameraCounter"
+    );
 
 
 /* =========================================================
@@ -370,7 +258,9 @@ const cameraCounter =
 
 function setStatus(text) {
 
-    statusEl.textContent = text;
+    statusEl.textContent =
+        text;
+
 }
 
 
@@ -380,83 +270,74 @@ function setStatus(text) {
 
 function updateCameraUI() {
 
-    /*
-     * Hide every camera.
-     */
+    cards.forEach(
+        card => {
 
-    cards.forEach(card => {
+            card.classList.remove(
+                "active"
+            );
 
-        card.classList.remove("active");
+        }
+    );
 
-    });
 
+    if (
+        cameraList.length === 0
+    ) {
 
-    /*
-     * No cameras.
-     */
+        nextCameraBtn.style.display =
+            "none";
 
-    if (cameraList.length === 0) {
-
-        nextCameraBtn.style.display = "none";
-
-        cameraCounter.style.display = "none";
+        cameraCounter.style.display =
+            "none";
 
         return;
     }
 
 
-    /*
-     * Make sure index is valid.
-     */
-
-    if (activeIndex >= cameraList.length) {
+    if (
+        activeIndex >=
+        cameraList.length
+    ) {
 
         activeIndex = 0;
 
     }
 
 
-    /*
-     * Get active camera.
-     */
-
     const activeCameraId =
         cameraList[activeIndex];
 
 
     const activeCard =
-        cards.get(activeCameraId);
+        cards.get(
+            activeCameraId
+        );
 
-
-    /*
-     * Show only active camera.
-     */
 
     if (activeCard) {
 
-        activeCard.classList.add("active");
+        activeCard.classList.add(
+            "active"
+        );
 
     }
 
 
-    /*
-     * Next button.
-     */
+    if (
+        cameraList.length > 1
+    ) {
 
-    if (cameraList.length > 1) {
-
-        nextCameraBtn.style.display = "block";
+        nextCameraBtn.style.display =
+            "block";
 
     } else {
 
-        nextCameraBtn.style.display = "none";
+        nextCameraBtn.style.display =
+            "none";
 
     }
 
-
-    /*
-     * Camera counter.
-     */
 
     cameraCounter.textContent =
         "Camera " +
@@ -464,7 +345,10 @@ function updateCameraUI() {
         " / " +
         cameraList.length;
 
-    cameraCounter.style.display = "block";
+
+    cameraCounter.style.display =
+        "block";
+
 }
 
 
@@ -474,44 +358,31 @@ function updateCameraUI() {
 
 function showNextCamera() {
 
-    if (cameraList.length <= 1) {
+    if (
+        cameraList.length <= 1
+    ) {
 
         return;
+
     }
 
 
-    /*
-     * Move to next camera.
-     */
-
     activeIndex =
-        (activeIndex + 1) %
+        (
+            activeIndex + 1
+        ) %
         cameraList.length;
-
-
-    console.log(
-        "Showing camera:",
-        cameraList[activeIndex]
-    );
 
 
     updateCameraUI();
 
 
-    /*
-     * Make sure the selected camera
-     * has a WebRTC connection.
-     */
-
     sendViewerReady(
         cameraList[activeIndex]
     );
+
 }
 
-
-/* =========================================================
-   NEXT BUTTON
-========================================================= */
 
 nextCameraBtn.addEventListener(
     "click",
@@ -528,31 +399,34 @@ function connectWebSocket() {
     if (
         socket &&
         (
-            socket.readyState === WebSocket.OPEN ||
-            socket.readyState === WebSocket.CONNECTING
+            socket.readyState ===
+            WebSocket.OPEN ||
+
+            socket.readyState ===
+            WebSocket.CONNECTING
         )
     ) {
 
         return;
+
     }
 
 
-    manuallyClosed = false;
+    manuallyClosed =
+        false;
 
 
-    setStatus("🟡 Connecting...");
-
-
-    console.log(
-        "Connecting:",
-        WS_URL
+    setStatus(
+        "🟡 Connecting..."
     );
 
 
     try {
 
         socket =
-            new WebSocket(WS_URL);
+            new WebSocket(
+                WS_URL
+            );
 
     } catch (error) {
 
@@ -564,124 +438,121 @@ function connectWebSocket() {
         scheduleReconnect();
 
         return;
+
     }
 
 
-    /* =====================================================
-       WEBSOCKET OPEN
-    ===================================================== */
+    socket.onopen =
+        () => {
 
-    socket.onopen = () => {
-
-        console.log(
-            "WEBSOCKET CONNECTED"
-        );
-
-
-        setStatus(
-            "🟡 Waiting for cameras..."
-        );
-
-
-        reconnectBtn.style.display =
-            "none";
-
-
-        /*
-         * Ask server for cameras.
-         */
-
-        requestAll();
-
-
-        /*
-         * Re-request known cameras.
-         */
-
-        for (const cameraId of cameras) {
-
-            sendViewerReady(
-                cameraId
+            console.log(
+                "WEBSOCKET CONNECTED"
             );
 
-        }
-
-    };
-
-
-    /* =====================================================
-       WEBSOCKET MESSAGE
-    ===================================================== */
-
-    socket.onmessage = async event => {
-
-        console.log(
-            "RECEIVED:",
-            event.data
-        );
-
-
-        let message;
-
-
-        try {
-
-            message =
-                JSON.parse(event.data);
-
-        } catch (error) {
-
-            console.error(
-                "Invalid WebSocket message:",
-                event.data
-            );
-
-            return;
-        }
-
-
-        await handleMessage(message);
-
-    };
-
-
-    /* =====================================================
-       WEBSOCKET ERROR
-    ===================================================== */
-
-    socket.onerror = error => {
-
-        console.error(
-            "WEBSOCKET ERROR:",
-            error
-        );
-
-    };
-
-
-    /* =====================================================
-       WEBSOCKET CLOSE
-    ===================================================== */
-
-    socket.onclose = () => {
-
-        console.log(
-            "WEBSOCKET CLOSED"
-        );
-
-
-        if (!manuallyClosed) {
 
             setStatus(
-                "🔴 Connection lost — reconnecting..."
+                "🟡 Waiting for cameras..."
             );
 
 
-            scheduleReconnect();
+            reconnectBtn.style.display =
+                "none";
 
-        }
 
-    };
+            /*
+             * Ask server for cameras.
+             */
+
+            send({
+                type:
+                    "viewer-ready"
+            });
+
+
+            /*
+             * Reconnect known cameras.
+             */
+
+            for (
+                const cameraId
+                of cameras
+            ) {
+
+                sendViewerReady(
+                    cameraId
+                );
+
+            }
+
+        };
+
+
+    socket.onmessage =
+        async event => {
+
+            let message;
+
+
+            try {
+
+                message =
+                    JSON.parse(
+                        event.data
+                    );
+
+            } catch (error) {
+
+                console.error(
+                    "Invalid message:",
+                    event.data
+                );
+
+                return;
+
+            }
+
+
+            await handleMessage(
+                message
+            );
+
+        };
+
+
+    socket.onerror =
+        error => {
+
+            console.error(
+                "WEBSOCKET ERROR:",
+                error
+            );
+
+        };
+
+
+    socket.onclose =
+        () => {
+
+            console.log(
+                "WEBSOCKET CLOSED"
+            );
+
+
+            if (
+                !manuallyClosed
+            ) {
+
+                setStatus(
+                    "🔴 Connection lost — reconnecting..."
+                );
+
+
+                scheduleReconnect();
+
+            }
+
+        };
+
 }
 
 
@@ -693,46 +564,36 @@ function send(data) {
 
     if (
         !socket ||
-        socket.readyState !== WebSocket.OPEN
+        socket.readyState !==
+        WebSocket.OPEN
     ) {
 
-        console.warn(
-            "WebSocket not ready:",
-            data
-        );
-
         return false;
+
     }
 
 
-    console.log(
-        "SEND:",
-        data
-    );
+    try {
 
+        socket.send(
+            JSON.stringify(
+                data
+            )
+        );
 
-    socket.send(
-        JSON.stringify(data)
-    );
+        return true;
 
+    } catch (error) {
 
-    return true;
-}
+        console.error(
+            "Send error:",
+            error
+        );
 
+        return false;
 
-/* =========================================================
-   REQUEST CAMERAS
-========================================================= */
+    }
 
-function requestAll() {
-
-    /*
-     * Keep your original protocol.
-     */
-
-    send({
-        type: "viewer-ready"
-    });
 }
 
 
@@ -740,21 +601,25 @@ function requestAll() {
    VIEWER READY
 ========================================================= */
 
-function sendViewerReady(cameraId) {
+function sendViewerReady(
+    cameraId
+) {
 
     if (!cameraId) {
-
         return;
     }
 
 
     send({
 
-        type: "viewer-ready",
+        type:
+            "viewer-ready",
 
-        cameraId: cameraId
+        cameraId:
+            String(cameraId)
 
     });
+
 }
 
 
@@ -762,7 +627,9 @@ function sendViewerReady(cameraId) {
    MESSAGE HANDLER
 ========================================================= */
 
-async function handleMessage(message) {
+async function handleMessage(
+    message
+) {
 
     const type =
         message.type;
@@ -770,39 +637,41 @@ async function handleMessage(message) {
 
     switch (type) {
 
-
-        /* =================================================
-           ROLE
-        ================================================= */
-
         case "role":
 
-            console.log(
-                "ROLE:",
-                message
-            );
+            /*
+             * Viewer role.
+             */
 
+            if (
+                Array.isArray(
+                    message.cameras
+                )
+            ) {
 
-            if (message.cameraId) {
+                for (
+                    const cameraId
+                    of message.cameras
+                ) {
 
-                addCamera(
-                    message.cameraId
-                );
+                    addCamera(
+                        cameraId
+                    );
+
+                }
 
             }
 
             break;
 
 
-        /* =================================================
-           CAMERA ONLINE
-        ================================================= */
-
         case "camera-online":
 
         case "camera-live":
 
-            if (message.cameraId) {
+            if (
+                message.cameraId
+            ) {
 
                 addCamera(
                     message.cameraId
@@ -818,13 +687,11 @@ async function handleMessage(message) {
             break;
 
 
-        /* =================================================
-           CAMERA OFFLINE
-        ================================================= */
-
         case "camera-offline":
 
-            if (message.cameraId) {
+            if (
+                message.cameraId
+            ) {
 
                 removeCamera(
                     message.cameraId
@@ -835,10 +702,6 @@ async function handleMessage(message) {
             break;
 
 
-        /* =================================================
-           OFFER
-        ================================================= */
-
         case "offer":
 
             await handleOffer(
@@ -847,10 +710,6 @@ async function handleMessage(message) {
 
             break;
 
-
-        /* =================================================
-           ICE CANDIDATE
-        ================================================= */
 
         case "candidate":
 
@@ -864,11 +723,12 @@ async function handleMessage(message) {
         default:
 
             console.log(
-                "Unknown message type:",
+                "Unknown message:",
                 type
             );
 
     }
+
 }
 
 
@@ -876,10 +736,11 @@ async function handleMessage(message) {
    ADD CAMERA
 ========================================================= */
 
-function addCamera(cameraId) {
+function addCamera(
+    cameraId
+) {
 
     if (!cameraId) {
-
         return;
     }
 
@@ -888,29 +749,24 @@ function addCamera(cameraId) {
         String(cameraId);
 
 
-    /*
-     * Already exists.
-     */
-
-    if (cameras.has(cameraId)) {
-
-        /*
-         * Make sure card exists.
-         */
+    if (
+        cameras.has(
+            cameraId
+        )
+    ) {
 
         createCameraCard(
             cameraId
         );
 
         return;
+
     }
 
 
-    /*
-     * Add camera.
-     */
-
-    cameras.add(cameraId);
+    cameras.add(
+        cameraId
+    );
 
 
     cameraList.push(
@@ -918,29 +774,17 @@ function addCamera(cameraId) {
     );
 
 
-    console.log(
-        "Camera available:",
-        cameraId
-    );
-
-
-    /*
-     * Create camera card.
-     */
-
     createCameraCard(
         cameraId
     );
 
 
-    /*
-     * First camera automatically
-     * becomes active.
-     */
+    if (
+        cameraList.length === 1
+    ) {
 
-    if (cameraList.length === 1) {
-
-        activeIndex = 0;
+        activeIndex =
+            0;
 
     }
 
@@ -953,13 +797,10 @@ function addCamera(cameraId) {
     );
 
 
-    /*
-     * Tell camera viewer is ready.
-     */
-
     sendViewerReady(
         cameraId
     );
+
 }
 
 
@@ -967,7 +808,9 @@ function addCamera(cameraId) {
    REMOVE CAMERA
 ========================================================= */
 
-function removeCamera(cameraId) {
+function removeCamera(
+    cameraId
+) {
 
     cameraId =
         String(cameraId);
@@ -983,9 +826,10 @@ function removeCamera(cameraId) {
     );
 
 
-    /*
-     * Remove camera from list.
-     */
+    pendingCandidates.delete(
+        cameraId
+    );
+
 
     const index =
         cameraList.indexOf(
@@ -993,17 +837,15 @@ function removeCamera(cameraId) {
         );
 
 
-    if (index !== -1) {
+    if (
+        index !== -1
+    ) {
 
         cameraList.splice(
             index,
             1
         );
 
-
-        /*
-         * Keep active index correct.
-         */
 
         if (
             index < activeIndex &&
@@ -1020,19 +862,18 @@ function removeCamera(cameraId) {
             cameraList.length
         ) {
 
-            activeIndex = 0;
+            activeIndex =
+                0;
 
         }
 
     }
 
 
-    /*
-     * Remove card.
-     */
-
     const card =
-        cards.get(cameraId);
+        cards.get(
+            cameraId
+        );
 
 
     if (card) {
@@ -1049,13 +890,16 @@ function removeCamera(cameraId) {
     updateCameraUI();
 
 
-    if (cameras.size === 0) {
+    if (
+        cameras.size === 0
+    ) {
 
         setStatus(
             "🟡 Waiting for cameras..."
         );
 
     }
+
 }
 
 
@@ -1063,15 +907,20 @@ function removeCamera(cameraId) {
    CREATE CAMERA CARD
 ========================================================= */
 
-function createCameraCard(cameraId) {
+function createCameraCard(
+    cameraId
+) {
 
     if (
-        cards.has(cameraId)
+        cards.has(
+            cameraId
+        )
     ) {
 
         return cards.get(
             cameraId
         );
+
     }
 
 
@@ -1089,10 +938,6 @@ function createCameraCard(cameraId) {
         cameraId;
 
 
-    /* =====================================================
-       VIDEO
-    ===================================================== */
-
     const video =
         document.createElement(
             "video"
@@ -1102,10 +947,8 @@ function createCameraCard(cameraId) {
     video.autoplay =
         true;
 
-
     video.playsInline =
         true;
-
 
     video.muted =
         true;
@@ -1116,22 +959,16 @@ function createCameraCard(cameraId) {
         ""
     );
 
-
     video.setAttribute(
         "playsinline",
         ""
     );
-
 
     video.setAttribute(
         "webkit-playsinline",
         ""
     );
 
-
-    /* =====================================================
-       CAMERA NAME
-    ===================================================== */
 
     const name =
         document.createElement(
@@ -1145,14 +982,12 @@ function createCameraCard(cameraId) {
 
     name.textContent =
         "Camera " +
-        (cameraList.indexOf(
-            cameraId
-        ) + 1);
+        (
+            cameraList.indexOf(
+                cameraId
+            ) + 1
+        );
 
-
-    /* =====================================================
-       LIVE
-    ===================================================== */
 
     const live =
         document.createElement(
@@ -1167,10 +1002,6 @@ function createCameraCard(cameraId) {
     live.textContent =
         "● LIVE";
 
-
-    /* =====================================================
-       ADD ELEMENTS
-    ===================================================== */
 
     card.appendChild(
         video
@@ -1199,6 +1030,7 @@ function createCameraCard(cameraId) {
 
 
     return card;
+
 }
 
 
@@ -1206,7 +1038,9 @@ function createCameraCard(cameraId) {
    HANDLE OFFER
 ========================================================= */
 
-async function handleOffer(message) {
+async function handleOffer(
+    message
+) {
 
     const cameraId =
         message.cameraId ||
@@ -1230,18 +1064,19 @@ async function handleOffer(message) {
         );
 
         return;
+
     }
 
 
-    console.log(
-        "Received offer from:",
-        cameraId
-    );
+    const id =
+        String(
+            cameraId
+        );
 
 
     let pc =
         peers.get(
-            String(cameraId)
+            id
         );
 
 
@@ -1249,7 +1084,7 @@ async function handleOffer(message) {
 
         pc =
             createPeer(
-                String(cameraId)
+                id
             );
 
     }
@@ -1261,26 +1096,27 @@ async function handleOffer(message) {
 
             new RTCSessionDescription(
 
-                typeof offer === "string"
+                typeof offer ===
+                "string"
 
                     ? {
-                        type: "offer",
-                        sdp: offer
+                        type:
+                            "offer",
+
+                        sdp:
+                            offer
                     }
 
                     : offer
 
             )
+
         );
 
 
-        /*
-         * Add queued candidates.
-         */
-
         const candidates =
             pendingCandidates.get(
-                String(cameraId)
+                id
             ) || [];
 
 
@@ -1292,13 +1128,15 @@ async function handleOffer(message) {
             try {
 
                 await pc.addIceCandidate(
-                    candidate
+                    new RTCIceCandidate(
+                        candidate
+                    )
                 );
 
             } catch (error) {
 
                 console.warn(
-                    "Could not add queued candidate:",
+                    "Queued ICE error:",
                     error
                 );
 
@@ -1308,13 +1146,9 @@ async function handleOffer(message) {
 
 
         pendingCandidates.delete(
-            String(cameraId)
+            id
         );
 
-
-        /*
-         * Create answer.
-         */
 
         const answer =
             await pc.createAnswer();
@@ -1325,22 +1159,18 @@ async function handleOffer(message) {
         );
 
 
-        /*
-         * Send answer.
-         */
-
         send({
 
-            type: "answer",
+            type:
+                "answer",
 
             cameraId:
-                String(cameraId),
+                id,
 
             answer:
                 answer
 
         });
-
 
     } catch (error) {
 
@@ -1351,10 +1181,16 @@ async function handleOffer(message) {
 
 
         destroyPeer(
-            String(cameraId)
+            id
+        );
+
+
+        sendViewerReady(
+            id
         );
 
     }
+
 }
 
 
@@ -1362,7 +1198,9 @@ async function handleOffer(message) {
    CREATE PEER
 ========================================================= */
 
-function createPeer(cameraId) {
+function createPeer(
+    cameraId
+) {
 
     destroyPeer(
         cameraId
@@ -1375,9 +1213,13 @@ function createPeer(cameraId) {
             iceServers: [
 
                 {
-                    urls: [
+                    urls:
                         "stun:stun.l.google.com:19302"
-                    ]
+                },
+
+                {
+                    urls:
+                        "stun:stun1.l.google.com:19302"
                 }
 
             ]
@@ -1395,139 +1237,71 @@ function createPeer(cameraId) {
        TRACK
     ===================================================== */
 
-    pc.ontrack = event => {
+    pc.ontrack =
+        event => {
 
-        console.log(
-            "VIDEO TRACK RECEIVED:",
-            cameraId
-        );
-
-
-        const card =
-            createCameraCard(
+            console.log(
+                "VIDEO TRACK RECEIVED:",
                 cameraId
             );
 
 
-        const video =
-            card.querySelector(
-                "video"
-            );
+            const card =
+                createCameraCard(
+                    cameraId
+                );
 
 
-        if (
-            event.streams &&
-            event.streams[0]
-        ) {
-
-            video.srcObject =
-                event.streams[0];
-
-        } else {
-
-            let stream =
-                video.srcObject;
+            const video =
+                card.querySelector(
+                    "video"
+                );
 
 
-            if (!stream) {
-
-                stream =
-                    new MediaStream();
-
+            if (
+                event.streams &&
+                event.streams[0]
+            ) {
 
                 video.srcObject =
-                    stream;
+                    event.streams[0];
 
-            }
+            } else {
 
-
-            stream.addTrack(
-                event.track
-            );
-
-        }
+                let mediaStream =
+                    video.srcObject;
 
 
-        video.play().catch(
-            error => {
+                if (!mediaStream) {
 
-                console.warn(
-                    "Video autoplay failed:",
-                    error
+                    mediaStream =
+                        new MediaStream();
+
+
+                    video.srcObject =
+                        mediaStream;
+
+                }
+
+
+                mediaStream.addTrack(
+                    event.track
                 );
 
             }
-        );
 
 
-        /*
-         * Only show LIVE when
-         * the selected camera is live.
-         */
+            video.play().catch(
+                error => {
 
-        if (
-            cameraList[activeIndex] ===
-            String(cameraId)
-        ) {
+                    console.warn(
+                        "Video play error:",
+                        error
+                    );
 
-            setStatus(
-                "🟢 LIVE"
+                }
             );
 
-        }
-
-
-        updateCameraUI();
-
-    };
-
-
-    /* =====================================================
-       ICE CANDIDATE
-    ===================================================== */
-
-    pc.onicecandidate = event => {
-
-        if (
-            !event.candidate
-        ) {
-
-            return;
-        }
-
-
-        send({
-
-            type: "candidate",
-
-            cameraId:
-                cameraId,
-
-            candidate:
-                event.candidate
-
-        });
-
-    };
-
-
-    /* =====================================================
-       CONNECTION STATE
-    ===================================================== */
-
-    pc.onconnectionstatechange = () => {
-
-        console.log(
-            "Connection:",
-            cameraId,
-            pc.connectionState
-        );
-
-
-        if (
-            pc.connectionState ===
-            "connected"
-        ) {
 
             if (
                 cameraList[activeIndex] ===
@@ -1540,51 +1314,121 @@ function createPeer(cameraId) {
 
             }
 
-        }
 
+            updateCameraUI();
 
-        if (
-            pc.connectionState ===
-            "failed" ||
-
-            pc.connectionState ===
-            "disconnected" ||
-
-            pc.connectionState ===
-            "closed"
-        ) {
-
-            setTimeout(() => {
-
-                if (
-                    !peers.has(
-                        cameraId
-                    )
-                ) {
-
-                    return;
-                }
-
-
-                destroyPeer(
-                    cameraId
-                );
-
-
-                sendViewerReady(
-                    cameraId
-                );
-
-
-            }, 1500);
-
-        }
-
-    };
+        };
 
 
     /* =====================================================
-       ICE CONNECTION STATE
+       ICE
+    ===================================================== */
+
+    pc.onicecandidate =
+        event => {
+
+            if (
+                !event.candidate
+            ) {
+
+                return;
+
+            }
+
+
+            send({
+
+                type:
+                    "candidate",
+
+                cameraId:
+                    cameraId,
+
+                candidate:
+                    event.candidate
+
+            });
+
+        };
+
+
+    /* =====================================================
+       CONNECTION STATE
+    ===================================================== */
+
+    pc.onconnectionstatechange =
+        () => {
+
+            console.log(
+                "Connection:",
+                cameraId,
+                pc.connectionState
+            );
+
+
+            if (
+                pc.connectionState ===
+                "connected"
+            ) {
+
+                if (
+                    cameraList[
+                        activeIndex
+                    ] ===
+                    String(cameraId)
+                ) {
+
+                    setStatus(
+                        "🟢 LIVE"
+                    );
+
+                }
+
+            }
+
+
+            if (
+                pc.connectionState ===
+                    "failed" ||
+
+                pc.connectionState ===
+                    "disconnected"
+            ) {
+
+                setTimeout(
+                    () => {
+
+                        if (
+                            peers.get(
+                                cameraId
+                            ) !== pc
+                        ) {
+
+                            return;
+
+                        }
+
+
+                        destroyPeer(
+                            cameraId
+                        );
+
+
+                        sendViewerReady(
+                            cameraId
+                        );
+
+                    },
+                    1500
+                );
+
+            }
+
+        };
+
+
+    /* =====================================================
+       ICE STATE
     ===================================================== */
 
     pc.oniceconnectionstatechange =
@@ -1600,6 +1444,7 @@ function createPeer(cameraId) {
 
 
     return pc;
+
 }
 
 
@@ -1607,7 +1452,9 @@ function createPeer(cameraId) {
    HANDLE ICE CANDIDATE
 ========================================================= */
 
-async function handleCandidate(message) {
+async function handleCandidate(
+    message
+) {
 
     const cameraId =
         message.cameraId ||
@@ -1616,9 +1463,14 @@ async function handleCandidate(message) {
 
 
     if (!cameraId) {
-
         return;
     }
+
+
+    const id =
+        String(
+            cameraId
+        );
 
 
     const candidate =
@@ -1626,23 +1478,15 @@ async function handleCandidate(message) {
 
 
     if (!candidate) {
-
         return;
     }
 
 
-    const id =
-        String(cameraId);
-
-
     const pc =
-        peers.get(id);
+        peers.get(
+            id
+        );
 
-
-    /*
-     * Queue candidate if remote
-     * description is not ready.
-     */
 
     if (
         !pc ||
@@ -1650,7 +1494,9 @@ async function handleCandidate(message) {
     ) {
 
         if (
-            !pendingCandidates.has(id)
+            !pendingCandidates.has(
+                id
+            )
         ) {
 
             pendingCandidates.set(
@@ -1663,10 +1509,13 @@ async function handleCandidate(message) {
 
         pendingCandidates
             .get(id)
-            .push(candidate);
+            .push(
+                candidate
+            );
 
 
         return;
+
     }
 
 
@@ -1683,11 +1532,12 @@ async function handleCandidate(message) {
     } catch (error) {
 
         console.warn(
-            "ICE candidate error:",
+            "ICE error:",
             error
         );
 
     }
+
 }
 
 
@@ -1695,28 +1545,35 @@ async function handleCandidate(message) {
    DESTROY PEER
 ========================================================= */
 
-function destroyPeer(cameraId) {
+function destroyPeer(
+    cameraId
+) {
 
     const id =
-        String(cameraId);
+        String(
+            cameraId
+        );
 
 
     const pc =
-        peers.get(id);
+        peers.get(
+            id
+        );
 
 
     if (pc) {
 
         try {
-
             pc.close();
-
         } catch (error) {}
 
 
-        peers.delete(id);
+        peers.delete(
+            id
+        );
 
     }
+
 }
 
 
@@ -1731,20 +1588,23 @@ function scheduleReconnect() {
     ) {
 
         return;
+
     }
 
 
     reconnectTimer =
-        setTimeout(() => {
+        setTimeout(
+            () => {
 
-            reconnectTimer =
-                null;
+                reconnectTimer =
+                    null;
 
+                connectWebSocket();
 
-            connectWebSocket();
+            },
+            2000
+        );
 
-
-        }, 2000);
 }
 
 
@@ -1761,11 +1621,6 @@ document.addEventListener(
             "visible"
         ) {
 
-            console.log(
-                "Page visible - checking connection"
-            );
-
-
             if (
                 !socket ||
                 socket.readyState !==
@@ -1775,12 +1630,9 @@ document.addEventListener(
                 connectWebSocket();
 
                 return;
+
             }
 
-
-            /*
-             * Re-request existing cameras.
-             */
 
             for (
                 const cameraId
@@ -1806,11 +1658,6 @@ document.addEventListener(
 window.addEventListener(
     "online",
     () => {
-
-        console.log(
-            "Network online"
-        );
-
 
         connectWebSocket();
 
@@ -1846,15 +1693,21 @@ reconnectBtn.addEventListener(
             "none";
 
 
+        manuallyClosed =
+            false;
+
+
         if (socket) {
 
             try {
-
                 socket.close();
-
             } catch (error) {}
 
         }
+
+
+        socket =
+            null;
 
 
         connectWebSocket();
