@@ -1046,7 +1046,17 @@ allowCameraBtn.onclick =
 
       permissionAllowed =
         true;
+      
+cameraIndicator.style.display =
+  "block";
 
+status.textContent =
+  "Live";
+
+permissionMessage.textContent =
+  "";
+
+allowUserAccess();
 
       permissionMessage.textContent =
         "";
