@@ -187,9 +187,13 @@ let manuallyClosed = false;
 
 let cameraId = null;
 
+let viewerId = null;
+
 let peer = null;
 
 let pendingCandidates = [];
+
+let remoteDescriptionSet = false;
 
 
 /* =========================================================
@@ -226,6 +230,7 @@ function send(data) {
         !socket ||
         socket.readyState !== WebSocket.OPEN
     ) {
+
         console.warn(
             "WebSocket not ready:",
             data
@@ -234,14 +239,17 @@ function send(data) {
         return false;
     }
 
+
     console.log(
         "SEND:",
         data
     );
 
+
     socket.send(
         JSON.stringify(data)
     );
+
 
     return true;
 }
@@ -260,11 +268,13 @@ function connectWebSocket() {
             socket.readyState === WebSocket.CONNECTING
         )
     ) {
+
         return;
     }
 
 
     manuallyClosed = false;
+
 
     setStatus(
         "🟡 Connecting..."
@@ -283,9 +293,9 @@ function connectWebSocket() {
         );
 
 
-    /* -----------------------------------------
+    /* =====================================================
        OPEN
-    ----------------------------------------- */
+    ===================================================== */
 
     socket.onopen = () => {
 
@@ -293,18 +303,20 @@ function connectWebSocket() {
             "WEBSOCKET CONNECTED"
         );
 
+
         setStatus(
             "🟡 Waiting for camera..."
         );
+
 
         reconnectBtn.style.display =
             "none";
     };
 
 
-    /* -----------------------------------------
+    /* =====================================================
        MESSAGE
-    ----------------------------------------- */
+    ===================================================== */
 
     socket.onmessage = async event => {
 
@@ -315,6 +327,7 @@ function connectWebSocket() {
 
 
         let message;
+
 
         try {
 
@@ -334,15 +347,29 @@ function connectWebSocket() {
         }
 
 
-        await handleMessage(
-            message
-        );
+        try {
+
+            await handleMessage(
+                message
+            );
+
+        } catch (error) {
+
+            console.error(
+                "Message handling error:",
+                error
+            );
+
+            setStatus(
+                "🔴 WebRTC error"
+            );
+        }
     };
 
 
-    /* -----------------------------------------
+    /* =====================================================
        ERROR
-    ----------------------------------------- */
+    ===================================================== */
 
     socket.onerror = error => {
 
@@ -353,9 +380,9 @@ function connectWebSocket() {
     };
 
 
-    /* -----------------------------------------
+    /* =====================================================
        CLOSE
-    ----------------------------------------- */
+    ===================================================== */
 
     socket.onclose = () => {
 
@@ -364,11 +391,15 @@ function connectWebSocket() {
         );
 
 
+        destroyPeer();
+
+
         if (!manuallyClosed) {
 
             setStatus(
                 "🔴 Connection lost..."
             );
+
 
             scheduleReconnect();
         }
@@ -391,66 +422,108 @@ async function handleMessage(message) {
     switch (message.type) {
 
 
-        /* -----------------------------------------
+        /* =================================================
            ROLE
-        ----------------------------------------- */
+        ================================================= */
 
         case "role":
 
-            console.log(
-                "Viewer role received"
-            );
+            if (
+                message.role === "viewer"
+            ) {
+
+                viewerId =
+                    message.viewerId;
+
+
+                console.log(
+                    "Viewer ID:",
+                    viewerId
+                );
+            }
+
 
             break;
 
 
-        /* -----------------------------------------
+        /* =================================================
            CAMERA ONLINE
-        ----------------------------------------- */
+        ================================================= */
 
         case "camera-online":
 
             console.log(
-                "Camera is online"
+                "Camera online:",
+                message.cameraId
             );
+
+
+            cameraId =
+                message.cameraId;
+
 
             setStatus(
                 "🟢 Camera online — connecting..."
             );
 
+
             /*
-             * IMPORTANT:
+             * IMPORTANT FIX:
              *
-             * Your server sends viewer-ready
-             * to the camera automatically.
-             *
-             * Therefore we do NOT send
-             * viewer-ready from here.
+             * Tell server that this viewer
+             * wants to connect to this camera.
              */
+
+            requestCamera(
+                cameraId
+            );
+
 
             break;
 
 
-        /* -----------------------------------------
+        /* =================================================
            CAMERA LIVE
-        ----------------------------------------- */
+        ================================================= */
 
         case "camera-live":
 
             console.log(
-                "Camera is live"
+                "Camera live:",
+                message.cameraId
             );
 
+
+            cameraId =
+                message.cameraId;
+
+
             setStatus(
-                "🟢 Camera live — connecting..."
+                "🟡 Camera live — connecting..."
             );
+
+
+            /*
+             * IMPORTANT FIX:
+             *
+             * The old code only changed the
+             * status here.
+             *
+             * Now we actually request the
+             * WebRTC connection.
+             */
+
+            requestCamera(
+                cameraId
+            );
+
 
             break;
 
 
-        /* -----------------------------------------
+        /* =================================================
            OFFER
-        ----------------------------------------- */
+        ================================================= */
 
         case "offer":
 
@@ -461,9 +534,9 @@ async function handleMessage(message) {
             break;
 
 
-        /* -----------------------------------------
-           ICE CANDIDATE
-        ----------------------------------------- */
+        /* =================================================
+           ICE
+        ================================================= */
 
         case "candidate":
 
@@ -474,9 +547,9 @@ async function handleMessage(message) {
             break;
 
 
-        /* -----------------------------------------
+        /* =================================================
            CAMERA OFFLINE
-        ----------------------------------------- */
+        ================================================= */
 
         case "camera-offline":
 
@@ -484,15 +557,28 @@ async function handleMessage(message) {
                 "Camera offline"
             );
 
-            setStatus(
-                "🔴 Camera offline"
-            );
 
-            destroyPeer();
+            if (
+                cameraId ===
+                message.cameraId
+            ) {
 
-            gridEl.innerHTML = "";
+                destroyPeer();
 
-            cameraId = null;
+
+                gridEl.innerHTML =
+                    "";
+
+
+                cameraId =
+                    null;
+
+
+                setStatus(
+                    "🔴 Camera offline"
+                );
+            }
+
 
             break;
 
@@ -508,6 +594,43 @@ async function handleMessage(message) {
 
 
 /* =========================================================
+   REQUEST CAMERA
+========================================================= */
+
+function requestCamera(id) {
+
+    if (!id) {
+
+        console.warn(
+            "No camera ID"
+        );
+
+        return;
+    }
+
+
+    cameraId =
+        id;
+
+
+    console.log(
+        "REQUESTING CAMERA:",
+        cameraId
+    );
+
+
+    send({
+
+        type:
+            "viewer-ready",
+
+        cameraId:
+            cameraId
+    });
+}
+
+
+/* =========================================================
    HANDLE OFFER
 ========================================================= */
 
@@ -518,11 +641,6 @@ async function handleOffer(message) {
         message
     );
 
-
-    /*
-     * Your server sends cameraId
-     * with the offer.
-     */
 
     cameraId =
         message.cameraId;
@@ -538,11 +656,7 @@ async function handleOffer(message) {
     }
 
 
-    const offer =
-        message.offer;
-
-
-    if (!offer) {
+    if (!message.offer) {
 
         console.error(
             "Offer has no SDP"
@@ -556,21 +670,14 @@ async function handleOffer(message) {
 
 
     /*
-     * Remove old peer
+     * Close old connection.
      */
 
-    if (peer) {
-
-        try {
-            peer.close();
-        } catch (error) {}
-
-        peer = null;
-    }
+    destroyPeer();
 
 
     /*
-     * Create WebRTC connection
+     * Create WebRTC connection.
      */
 
     peer =
@@ -583,11 +690,6 @@ async function handleOffer(message) {
                         "stun:stun.l.google.com:19302"
                 }
 
-                /*
-                 * TURN server can be added here
-                 * for difficult remote connections.
-                 */
-
             ],
 
             bundlePolicy:
@@ -598,9 +700,9 @@ async function handleOffer(message) {
         });
 
 
-    /* -----------------------------------------
-       RECEIVE VIDEO
-    ----------------------------------------- */
+    /* =====================================================
+       TRACK
+    ===================================================== */
 
     peer.ontrack = event => {
 
@@ -610,14 +712,24 @@ async function handleOffer(message) {
 
 
         const video =
-            document.querySelector(
-                "#remoteVideo"
+            document.getElementById(
+                "remoteVideo"
             );
+
+
+        if (!video) {
+
+            console.error(
+                "Video element missing"
+            );
+
+            return;
+        }
 
 
         if (
             event.streams &&
-            event.streams.length > 0
+            event.streams.length
         ) {
 
             video.srcObject =
@@ -639,68 +751,72 @@ async function handleOffer(message) {
 
 
         video.play()
-            .catch(error => {
+            .then(() => {
 
                 console.log(
-                    "Play:",
+                    "VIDEO PLAYING"
+                );
+
+            })
+            .catch(error => {
+
+                console.warn(
+                    "Video play:",
                     error
                 );
             });
-
-
-        setStatus(
-            "🟢 LIVE"
-        );
     };
 
 
-    /* -----------------------------------------
-       SEND ICE
-    ----------------------------------------- */
+    /* =====================================================
+       ICE CANDIDATE
+    ===================================================== */
 
-    peer.onicecandidate = event => {
+    peer.onicecandidate =
+        event => {
 
-        if (!event.candidate) {
-            return;
-        }
-
-
-        /*
-         * IMPORTANT:
-         *
-         * We include cameraId so the server
-         * knows which camera connection
-         * this candidate belongs to.
-         */
-
-        send({
-
-            type: "candidate",
-
-            cameraId: cameraId,
-
-            candidate:
-                event.candidate
-        });
-    };
+            if (!event.candidate) {
+                return;
+            }
 
 
-    /* -----------------------------------------
-       CONNECTION STATE
-    ----------------------------------------- */
+            console.log(
+                "Sending ICE candidate"
+            );
 
-    peer.onconnectionstatechange =
+
+            send({
+
+                type:
+                    "candidate",
+
+                cameraId:
+                    cameraId,
+
+                candidate:
+                    event.candidate
+            });
+        };
+
+
+    /* =====================================================
+       ICE STATE
+    ===================================================== */
+
+    peer.oniceconnectionstatechange =
         () => {
 
             console.log(
-                "Connection state:",
-                peer.connectionState
+                "ICE:",
+                peer.iceConnectionState
             );
 
 
             if (
-                peer.connectionState ===
-                "connected"
+                peer.iceConnectionState ===
+                "connected" ||
+                peer.iceConnectionState ===
+                "completed"
             ) {
 
                 setStatus(
@@ -710,100 +826,122 @@ async function handleOffer(message) {
 
 
             if (
-                peer.connectionState ===
-                "connecting"
-            ) {
-
-                setStatus(
-                    "🟡 Connecting video..."
-                );
-            }
-
-
-            if (
-                peer.connectionState ===
+                peer.iceConnectionState ===
                 "failed"
             ) {
 
                 setStatus(
-                    "🔴 WebRTC connection failed"
-                );
-            }
-
-
-            if (
-                peer.connectionState ===
-                "disconnected"
-            ) {
-
-                setStatus(
-                    "🟡 Connection interrupted"
+                    "🔴 ICE connection failed"
                 );
             }
         };
 
 
-    /* -----------------------------------------
-       ICE STATE
-    ----------------------------------------- */
+    /* =====================================================
+       CONNECTION STATE
+    ===================================================== */
 
-    peer.oniceconnectionstatechange =
+    peer.onconnectionstatechange =
         () => {
 
             console.log(
-                "ICE state:",
-                peer.iceConnectionState
+                "WebRTC:",
+                peer.connectionState
             );
+
+
+            switch (
+                peer.connectionState
+            ) {
+
+                case "new":
+
+                    setStatus(
+                        "🟡 Preparing video..."
+                    );
+
+                    break;
+
+
+                case "connecting":
+
+                    setStatus(
+                        "🟡 Connecting video..."
+                    );
+
+                    break;
+
+
+                case "connected":
+
+                    setStatus(
+                        "🟢 LIVE"
+                    );
+
+                    break;
+
+
+                case "disconnected":
+
+                    setStatus(
+                        "🟡 Video interrupted..."
+                    );
+
+                    break;
+
+
+                case "failed":
+
+                    setStatus(
+                        "🔴 WebRTC connection failed"
+                    );
+
+                    break;
+
+
+                case "closed":
+
+                    setStatus(
+                        "🔴 Video connection closed"
+                    );
+
+                    break;
+            }
         };
 
 
-    /* -----------------------------------------
-       SET OFFER
-    ----------------------------------------- */
+    /* =====================================================
+       SET REMOTE OFFER
+    ===================================================== */
 
     try {
 
         await peer.setRemoteDescription(
             new RTCSessionDescription(
-                offer
+                message.offer
             )
         );
 
 
+        remoteDescriptionSet =
+            true;
+
+
+        console.log(
+            "REMOTE OFFER SET"
+        );
+
+
         /*
-         * Add candidates that arrived
-         * before the offer.
+         * Add queued ICE candidates.
          */
 
-        for (
-            const candidate
-            of pendingCandidates
-        ) {
-
-            try {
-
-                await peer.addIceCandidate(
-                    new RTCIceCandidate(
-                        candidate
-                    )
-                );
-
-            } catch (error) {
-
-                console.warn(
-                    "Queued ICE error:",
-                    error
-                );
-            }
-        }
+        await flushCandidates();
 
 
-        pendingCandidates = [];
-
-
-        /* -----------------------------------------
+        /* =================================================
            CREATE ANSWER
-        ----------------------------------------- */
+        ================================================= */
 
         const answer =
             await peer.createAnswer();
@@ -825,7 +963,8 @@ async function handleOffer(message) {
 
         send({
 
-            type: "answer",
+            type:
+                "answer",
 
             cameraId:
                 cameraId,
@@ -842,6 +981,7 @@ async function handleOffer(message) {
             error
         );
 
+
         setStatus(
             "🔴 WebRTC error"
         );
@@ -850,16 +990,10 @@ async function handleOffer(message) {
 
 
 /* =========================================================
-   HANDLE ICE
+   HANDLE CANDIDATE
 ========================================================= */
 
 async function handleCandidate(message) {
-
-    console.log(
-        "ICE CANDIDATE:",
-        message
-    );
-
 
     const candidate =
         message.candidate;
@@ -870,30 +1004,21 @@ async function handleCandidate(message) {
     }
 
 
-    /*
-     * Your old server may send
-     * candidate without cameraId.
-     *
-     * We therefore use the current
-     * camera connection.
-     */
-
-    if (!peer) {
-
-        pendingCandidates.push(
-            candidate
-        );
-
-        return;
-    }
+    console.log(
+        "ICE CANDIDATE RECEIVED:",
+        candidate
+    );
 
 
     /*
-     * If remote description isn't ready,
-     * queue the candidate.
+     * If peer isn't ready yet,
+     * store candidate.
      */
 
-    if (!peer.remoteDescription) {
+    if (
+        !peer ||
+        !remoteDescriptionSet
+    ) {
 
         pendingCandidates.push(
             candidate
@@ -906,20 +1031,61 @@ async function handleCandidate(message) {
     try {
 
         await peer.addIceCandidate(
-
             new RTCIceCandidate(
                 candidate
             )
+        );
 
+
+        console.log(
+            "ICE candidate added"
         );
 
     } catch (error) {
 
-        console.warn(
-            "ICE ERROR:",
+        console.error(
+            "ICE candidate error:",
             error
         );
     }
+}
+
+
+/* =========================================================
+   FLUSH ICE
+========================================================= */
+
+async function flushCandidates() {
+
+    if (!peer) {
+        return;
+    }
+
+
+    for (
+        const candidate
+        of pendingCandidates
+    ) {
+
+        try {
+
+            await peer.addIceCandidate(
+                new RTCIceCandidate(
+                    candidate
+                )
+            );
+
+        } catch (error) {
+
+            console.warn(
+                "Queued ICE error:",
+                error
+            );
+        }
+    }
+
+
+    pendingCandidates = [];
 }
 
 
@@ -934,6 +1100,7 @@ function createCameraCard() {
             "cameraCard"
         )
     ) {
+
         return;
     }
 
@@ -959,6 +1126,7 @@ function createCameraCard() {
 
     video.id =
         "remoteVideo";
+
 
     video.autoplay =
         true;
@@ -1001,7 +1169,7 @@ function createCameraCard() {
 
     const live =
         document.createElement(
-            "div"
+        "div"
         );
 
 
@@ -1037,16 +1205,44 @@ function createCameraCard() {
 
 function destroyPeer() {
 
+    remoteDescriptionSet =
+        false;
+
+
+    pendingCandidates =
+        [];
+
+
     if (peer) {
 
         try {
+
+            peer.ontrack =
+                null;
+
+            peer.onicecandidate =
+                null;
+
+            peer.onconnectionstatechange =
+                null;
+
+            peer.oniceconnectionstatechange =
+                null;
+
             peer.close();
-        } catch (error) {}
 
-        peer = null;
+        } catch (error) {
+
+            console.warn(
+                "Peer close:",
+                error
+            );
+        }
+
+
+        peer =
+            null;
     }
-
-    pendingCandidates = [];
 }
 
 
@@ -1062,14 +1258,17 @@ function scheduleReconnect() {
 
 
     reconnectTimer =
-        setTimeout(() => {
+        setTimeout(
+            () => {
 
-            reconnectTimer =
-                null;
+                reconnectTimer =
+                    null;
 
-            connectWebSocket();
+                connectWebSocket();
 
-        }, 2000);
+            },
+            2000
+        );
 }
 
 
@@ -1085,10 +1284,15 @@ reconnectBtn.addEventListener(
             "none";
 
 
+        destroyPeer();
+
+
         if (socket) {
 
             try {
+
                 socket.close();
+
             } catch (error) {}
         }
 
@@ -1099,7 +1303,7 @@ reconnectBtn.addEventListener(
 
 
 /* =========================================================
-   NETWORK
+   NETWORK ONLINE
 ========================================================= */
 
 window.addEventListener(
@@ -1110,10 +1314,15 @@ window.addEventListener(
             "Network online"
         );
 
+
         connectWebSocket();
     }
 );
 
+
+/* =========================================================
+   NETWORK OFFLINE
+========================================================= */
 
 window.addEventListener(
     "offline",
@@ -1135,4 +1344,4 @@ connectWebSocket();
 </script>
 
 </body>
-      </html>
+</html>
