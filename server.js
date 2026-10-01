@@ -6,95 +6,74 @@ const path = require("path");
 const https = require("https");
 const WebSocket = require("ws");
 
-const PORT =
-    process.env.PORT || 10000;
+const PORT = process.env.PORT || 10000;
 
-const NTFY_TOPIC =
-    process.env.NTFY_TOPIC || "";
+const NTFY_TOPIC = process.env.NTFY_TOPIC || "";
 
-const CAMERA_FILE =
-    path.join(
-        __dirname,
-        "camera.html"
-    );
+const CAMERA_FILE = path.join(
+    __dirname,
+    "camera.html"
+);
 
-const VIEWER_FILE =
-    path.join(
-        __dirname,
-        "viewer.html"
-    );
+const VIEWER_FILE = path.join(
+    __dirname,
+    "viewer.html"
+);
 
 
 /* =========================================================
-   NTFY NOTIFICATION
+   NTFY
 ========================================================= */
 
-function mobileNotification(
-    message
-) {
+function mobileNotification(message) {
 
     if (!NTFY_TOPIC) {
         return;
     }
 
+    const data = Buffer.from(
+        message,
+        "utf8"
+    );
 
-    const data =
-        Buffer.from(
-            message,
-            "utf8"
-        );
+    const request = https.request(
+        {
+            hostname: "ntfy.sh",
 
+            path:
+                "/" +
+                encodeURIComponent(NTFY_TOPIC),
 
-    const request =
-        https.request(
+            method: "POST",
 
-            {
-                hostname:
-                    "ntfy.sh",
+            headers: {
+                "Content-Type":
+                    "text/plain; charset=utf-8",
 
-                path:
-                    "/" +
-                    encodeURIComponent(
-                        NTFY_TOPIC
-                    ),
+                "Content-Length":
+                    data.length,
 
-                method:
-                    "POST",
+                "Title":
+                    "Camera Notification",
 
-                headers: {
-
-                    "Content-Type":
-                        "text/plain; charset=utf-8",
-
-                    "Content-Length":
-                        data.length,
-
-                    "Title":
-                        "Camera Notification",
-
-                    "Priority":
-                        "high"
-
-                }
-
-            },
-
-            response => {
-
-                response.on(
-                    "data",
-                    () => {}
-                );
-
-                response.on(
-                    "end",
-                    () => {}
-                );
-
+                "Priority":
+                    "high"
             }
+        },
 
-        );
+        response => {
 
+            response.on(
+                "data",
+                () => {}
+            );
+
+            response.on(
+                "end",
+                () => {}
+            );
+        }
+    );
 
     request.on(
         "error",
@@ -104,62 +83,48 @@ function mobileNotification(
                 "NTFY error:",
                 error.message
             );
-
         }
     );
-
 
     request.write(data);
 
     request.end();
-
 }
 
 
 /* =========================================================
-   HELPERS
+   ID
 ========================================================= */
 
-function makeId(
-    prefix
-) {
+function makeId(prefix) {
 
     return (
-
         prefix +
-
         "_" +
-
         Date.now().toString(36) +
-
         "_" +
-
         Math.random()
             .toString(36)
             .substring(2, 10)
-
     );
-
 }
 
 
-function send(
-    ws,
-    message
-) {
+/* =========================================================
+   SEND
+========================================================= */
+
+function send(ws, message) {
 
     if (
         ws &&
-        ws.readyState ===
-        WebSocket.OPEN
+        ws.readyState === WebSocket.OPEN
     ) {
 
         try {
 
             ws.send(
-                JSON.stringify(
-                    message
-                )
+                JSON.stringify(message)
             );
 
             return true;
@@ -167,18 +132,19 @@ function send(
         } catch (error) {
 
             console.error(
-                "WebSocket send error:",
+                "Send error:",
                 error.message
             );
-
         }
-
     }
 
     return false;
-
 }
 
+
+/* =========================================================
+   BROADCAST
+========================================================= */
 
 function broadcast(
     collection,
@@ -186,131 +152,143 @@ function broadcast(
 ) {
 
     for (
-        const ws
-        of collection.values()
+        const ws of collection.values()
     ) {
 
         send(
             ws,
             message
         );
-
     }
-
 }
+
+
+/* =========================================================
+   CONNECTION MAPS
+========================================================= */
+
+const cameras = new Map();
+
+const viewers = new Map();
+
+const cameraStates = new Map();
 
 
 /* =========================================================
    HTTP SERVER
 ========================================================= */
 
-const server =
-    http.createServer(
-        (req, res) => {
+const server = http.createServer(
+    (req, res) => {
 
-            const url =
-                new URL(
-                    req.url,
-                    `http://${req.headers.host}`
-                );
+        let url;
 
+        try {
 
-            /* CAMERA */
+            url = new URL(
+                req.url,
+                `http://${req.headers.host}`
+            );
 
-            if (
-                url.pathname === "/" ||
-                url.pathname === "/camera" ||
-                url.pathname === "/camera.html"
-            ) {
+        } catch {
 
-                serveFile(
-                    CAMERA_FILE,
-                    "text/html; charset=utf-8",
-                    res
-                );
+            res.writeHead(400);
 
-                return;
+            res.end("Bad Request");
 
-            }
+            return;
+        }
 
 
-            /* VIEWER */
+        /* CAMERA */
 
-            if (
-                url.pathname === "/viewer" ||
-                url.pathname === "/viewer.html"
-            ) {
+        if (
+            url.pathname === "/" ||
+            url.pathname === "/camera" ||
+            url.pathname === "/camera.html"
+        ) {
 
-                serveFile(
-                    VIEWER_FILE,
-                    "text/html; charset=utf-8",
-                    res
-                );
+            serveFile(
+                CAMERA_FILE,
+                res
+            );
 
-                return;
-
-            }
+            return;
+        }
 
 
-            /* HEALTH */
+        /* VIEWER */
 
-            if (
-                url.pathname === "/health"
-            ) {
+        if (
+            url.pathname === "/viewer" ||
+            url.pathname === "/viewer.html"
+        ) {
 
-                res.writeHead(
-                    200,
+            serveFile(
+                VIEWER_FILE,
+                res
+            );
+
+            return;
+        }
+
+
+        /* HEALTH */
+
+        if (
+            url.pathname === "/health"
+        ) {
+
+            res.writeHead(
+                200,
+                {
+                    "Content-Type":
+                        "application/json",
+
+                    "Cache-Control":
+                        "no-store"
+                }
+            );
+
+            res.end(
+                JSON.stringify(
                     {
-                        "Content-Type":
-                            "application/json"
-                    }
-                );
-
-
-                res.end(
-                    JSON.stringify({
-
-                        status:
-                            "ok",
+                        status: "ok",
 
                         cameras:
                             cameras.size,
 
                         viewers:
                             viewers.size
-
-                    })
-                );
-
-                return;
-
-            }
-
-
-            res.writeHead(
-                404,
-                {
-                    "Content-Type":
-                        "text/plain"
-                }
+                    }
+                )
             );
 
-
-            res.end(
-                "Not Found"
-            );
-
+            return;
         }
-    );
+
+
+        res.writeHead(
+            404,
+            {
+                "Content-Type":
+                    "text/plain"
+            }
+        );
+
+        res.end(
+            "Not Found"
+        );
+    }
+);
 
 
 /* =========================================================
-   SERVE FILE
+   SERVE HTML
 ========================================================= */
 
 function serveFile(
     file,
-    contentType,
     res
 ) {
 
@@ -325,7 +303,6 @@ function serveFile(
                     error
                 );
 
-
                 res.writeHead(
                     500,
                     {
@@ -334,14 +311,11 @@ function serveFile(
                     }
                 );
 
-
                 res.end(
                     "Server error"
                 );
 
-
                 return;
-
             }
 
 
@@ -349,21 +323,16 @@ function serveFile(
                 200,
                 {
                     "Content-Type":
-                        contentType,
+                        "text/html; charset=utf-8",
 
                     "Cache-Control":
                         "no-store"
                 }
             );
 
-
-            res.end(
-                data
-            );
-
+            res.end(data);
         }
     );
-
 }
 
 
@@ -378,32 +347,7 @@ const wss =
 
         maxPayload:
             1024 * 1024
-
     });
-
-
-/*
- * cameraId -> WebSocket
- */
-
-const cameras =
-    new Map();
-
-
-/*
- * viewerId -> WebSocket
- */
-
-const viewers =
-    new Map();
-
-
-/*
- * cameraId -> state
- */
-
-const cameraStates =
-    new Map();
 
 
 /* =========================================================
@@ -414,68 +358,68 @@ wss.on(
     "connection",
     (ws, request) => {
 
-        const url =
-            new URL(
+        let url;
+
+        try {
+
+            url = new URL(
                 request.url,
                 `http://${request.headers.host}`
             );
+
+        } catch {
+
+            ws.close(
+                1008,
+                "Invalid request"
+            );
+
+            return;
+        }
 
 
         const route =
             url.pathname;
 
 
-        if (
-            route !== "/camera" &&
-            route !== "/viewer"
-        ) {
+        console.log(
+            "WebSocket:",
+            route
+        );
 
-            ws.close(
-                1008,
-                "Invalid route"
-            );
+
+        if (route === "/camera") {
+
+            handleCamera(ws);
 
             return;
-
         }
 
 
-        if (
-            route === "/camera"
-        ) {
+        if (route === "/viewer") {
 
-            handleCamera(
-                ws
-            );
+            handleViewer(ws);
 
-        } else {
-
-            handleViewer(
-                ws
-            );
-
+            return;
         }
 
+
+        ws.close(
+            1008,
+            "Invalid route"
+        );
     }
 );
 
 
 /* =========================================================
-   CAMERA CONNECTION
+   CAMERA
 ========================================================= */
 
-function handleCamera(
-    ws
-) {
-
-    /*
-     * KEEP THIS ID FORMAT
-     */
+function handleCamera(ws) {
 
     const cameraId =
-        makeId(
-            "sexvideo"
-        );
+        makeId("camera");
 
 
     cameras.set(
@@ -487,8 +431,7 @@ function handleCamera(
     cameraStates.set(
         cameraId,
         {
-            live:
-                false
+            live: false
         }
     );
 
@@ -506,21 +449,16 @@ function handleCamera(
     );
 
 
-    /* SEND CAMERA ID */
+    /* Send camera ID */
 
     send(
         ws,
         {
+            type: "role",
 
-            type:
-                "role",
+            role: "camera",
 
-            role:
-                "camera",
-
-            cameraId:
-                cameraId
-
+            cameraId: cameraId
         }
     );
 
@@ -531,24 +469,19 @@ function handleCamera(
     );
 
 
-    /*
-     * Tell viewers that camera
-     * has appeared.
-     */
+    /* Tell existing viewers */
 
     broadcast(
         viewers,
         {
+            type: "camera-online",
 
-            type:
-                "camera-online",
-
-            cameraId:
-                cameraId
-
+            cameraId: cameraId
         }
     );
 
+
+    /* Camera messages */
 
     ws.on(
         "message",
@@ -558,19 +491,17 @@ function handleCamera(
                 ws,
                 raw
             );
-
         }
     );
 
+
+    /* Camera closed */
 
     ws.on(
         "close",
         () => {
 
-            removeCamera(
-                ws
-            );
-
+            removeCamera(ws);
         }
     );
 
@@ -580,18 +511,16 @@ function handleCamera(
         error => {
 
             console.error(
-                "Camera WebSocket error:",
+                "Camera socket error:",
                 error.message
             );
-
         }
     );
-
 }
 
 
 /* =========================================================
-   CAMERA MESSAGE HANDLER
+   CAMERA MESSAGE
 ========================================================= */
 
 function handleCameraMessage(
@@ -601,18 +530,19 @@ function handleCameraMessage(
 
     let msg;
 
-
     try {
 
-        msg =
-            JSON.parse(
-                raw.toString()
-            );
+        msg = JSON.parse(
+            raw.toString()
+        );
 
     } catch {
 
-        return;
+        console.log(
+            "Invalid camera message"
+        );
 
+        return;
     }
 
 
@@ -630,8 +560,7 @@ function handleCameraMessage(
     ===================================================== */
 
     if (
-        msg.type ===
-        "camera-live"
+        msg.type === "camera-live"
     ) {
 
         ws.cameraLive =
@@ -648,7 +577,6 @@ function handleCameraMessage(
 
             state.live =
                 true;
-
         }
 
 
@@ -659,26 +587,23 @@ function handleCameraMessage(
 
 
         /*
-         * Tell viewers.
+         * Tell every viewer.
          */
 
         broadcast(
             viewers,
             {
-
-                type:
-                    "camera-live",
+                type: "camera-live",
 
                 cameraId:
                     cameraId
-
             }
         );
 
 
         /*
-         * Tell all connected viewers
-         * to establish WebRTC connection.
+         * Create WebRTC connection
+         * for every existing viewer.
          */
 
         for (
@@ -689,21 +614,17 @@ function handleCameraMessage(
             send(
                 ws,
                 {
-
                     type:
                         "viewer-ready",
 
                     viewerId:
                         viewerId
-
                 }
             );
-
         }
 
 
         return;
-
     }
 
 
@@ -712,13 +633,8 @@ function handleCameraMessage(
     ===================================================== */
 
     if (
-        msg.type ===
-        "offer"
+        msg.type === "offer"
     ) {
-
-        /*
-         * Accept both names.
-         */
 
         const viewerId =
             msg.viewerId ||
@@ -731,19 +647,16 @@ function handleCameraMessage(
         ) {
 
             console.log(
-                "Offer missing viewerId"
+                "Invalid offer"
             );
 
             return;
-
         }
 
 
         const viewer =
             viewers.get(
-                String(
-                    viewerId
-                )
+                String(viewerId)
             );
 
 
@@ -755,33 +668,24 @@ function handleCameraMessage(
             );
 
             return;
-
         }
 
-
-        /*
-         * Send offer to viewer.
-         */
 
         send(
             viewer,
             {
-
-                type:
-                    "offer",
+                type: "offer",
 
                 cameraId:
                     cameraId,
 
                 offer:
                     msg.offer
-
             }
         );
 
 
         return;
-
     }
 
 
@@ -790,8 +694,7 @@ function handleCameraMessage(
     ===================================================== */
 
     if (
-        msg.type ===
-        "candidate"
+        msg.type === "candidate"
     ) {
 
         const viewerId =
@@ -805,15 +708,12 @@ function handleCameraMessage(
         ) {
 
             return;
-
         }
 
 
         const viewer =
             viewers.get(
-                String(
-                    viewerId
-                )
+                String(viewerId)
             );
 
 
@@ -825,34 +725,27 @@ function handleCameraMessage(
         send(
             viewer,
             {
-
-                type:
-                    "candidate",
+                type: "candidate",
 
                 cameraId:
                     cameraId,
 
                 candidate:
                     msg.candidate
-
             }
         );
 
 
         return;
-
     }
-
 }
 
 
 /* =========================================================
-   REMOVE CAMERA
+   CAMERA DISCONNECT
 ========================================================= */
 
-function removeCamera(
-    ws
-) {
+function removeCamera(ws) {
 
     const cameraId =
         ws.cameraId;
@@ -864,15 +757,12 @@ function removeCamera(
 
 
     if (
-        cameras.get(
-            cameraId
-        ) === ws
+        cameras.get(cameraId) === ws
     ) {
 
         cameras.delete(
             cameraId
         );
-
     }
 
 
@@ -887,20 +777,14 @@ function removeCamera(
     );
 
 
-    /*
-     * Tell viewers.
-     */
-
     broadcast(
         viewers,
         {
-
             type:
                 "camera-offline",
 
             cameraId:
                 cameraId
-
         }
     );
 
@@ -909,22 +793,17 @@ function removeCamera(
         "Camera disconnected: " +
         cameraId
     );
-
 }
 
 
 /* =========================================================
-   VIEWER CONNECTION
+   VIEWER
 ========================================================= */
 
-function handleViewer(
-    ws
-) {
+function handleViewer(ws) {
 
     const viewerId =
-        makeId(
-            "viewer"
-        );
+        makeId("viewer");
 
 
     viewers.set(
@@ -943,20 +822,14 @@ function handleViewer(
     );
 
 
-    /*
-     * Send viewer role and
-     * current camera list.
-     */
+    /* Send viewer role */
 
     send(
         ws,
         {
+            type: "role",
 
-            type:
-                "role",
-
-            role:
-                "viewer",
+            role: "viewer",
 
             viewerId:
                 viewerId,
@@ -965,13 +838,13 @@ function handleViewer(
                 Array.from(
                     cameras.keys()
                 )
-
         }
     );
 
 
     /*
-     * Send existing cameras.
+     * Send all currently connected
+     * cameras.
      */
 
     for (
@@ -985,13 +858,11 @@ function handleViewer(
         send(
             ws,
             {
-
                 type:
                     "camera-online",
 
                 cameraId:
                     cameraId
-
             }
         );
 
@@ -1003,20 +874,18 @@ function handleViewer(
             send(
                 ws,
                 {
-
                     type:
                         "camera-live",
 
                     cameraId:
                         cameraId
-
                 }
             );
-
         }
-
     }
 
+
+    /* Viewer messages */
 
     ws.on(
         "message",
@@ -1026,19 +895,17 @@ function handleViewer(
                 ws,
                 raw
             );
-
         }
     );
 
+
+    /* Viewer disconnected */
 
     ws.on(
         "close",
         () => {
 
-            removeViewer(
-                ws
-            );
-
+            removeViewer(ws);
         }
     );
 
@@ -1048,18 +915,16 @@ function handleViewer(
         error => {
 
             console.error(
-                "Viewer WebSocket error:",
+                "Viewer socket error:",
                 error.message
             );
-
         }
     );
-
 }
 
 
 /* =========================================================
-   VIEWER MESSAGE HANDLER
+   VIEWER MESSAGE
 ========================================================= */
 
 function handleViewerMessage(
@@ -1069,18 +934,19 @@ function handleViewerMessage(
 
     let msg;
 
-
     try {
 
-        msg =
-            JSON.parse(
-                raw.toString()
-            );
+        msg = JSON.parse(
+            raw.toString()
+        );
 
     } catch {
 
-        return;
+        console.log(
+            "Invalid viewer message"
+        );
 
+        return;
     }
 
 
@@ -1098,13 +964,11 @@ function handleViewerMessage(
     ===================================================== */
 
     if (
-        msg.type ===
-        "viewer-ready"
+        msg.type === "viewer-ready"
     ) {
 
         /*
-         * No camera ID means:
-         * send current camera list.
+         * Viewer is asking for all cameras.
          */
 
         if (!msg.cameraId) {
@@ -1120,13 +984,11 @@ function handleViewerMessage(
                 send(
                     ws,
                     {
-
                         type:
                             "camera-online",
 
                         cameraId:
                             cameraId
-
                     }
                 );
 
@@ -1138,28 +1000,24 @@ function handleViewerMessage(
                     send(
                         ws,
                         {
-
                             type:
                                 "camera-live",
 
                             cameraId:
                                 cameraId
-
                         }
                     );
-
                 }
-
             }
 
 
             return;
-
         }
 
 
         /*
-         * Find requested camera.
+         * Viewer specifically selected
+         * a camera.
          */
 
         const camera =
@@ -1171,33 +1029,33 @@ function handleViewerMessage(
 
 
         if (!camera) {
+
+            console.log(
+                "Requested camera not found:",
+                msg.cameraId
+            );
+
             return;
         }
 
 
         /*
-         * INTERNAL SIGNALING.
-         *
-         * This is not displayed to
-         * the viewer.
+         * Tell camera to create offer.
          */
 
         send(
             camera,
             {
-
                 type:
                     "viewer-ready",
 
                 viewerId:
                     viewerId
-
             }
         );
 
 
         return;
-
     }
 
 
@@ -1206,8 +1064,7 @@ function handleViewerMessage(
     ===================================================== */
 
     if (
-        msg.type ===
-        "answer"
+        msg.type === "answer"
     ) {
 
         if (
@@ -1215,8 +1072,11 @@ function handleViewerMessage(
             !msg.answer
         ) {
 
-            return;
+            console.log(
+                "Invalid answer"
+            );
 
+            return;
         }
 
 
@@ -1236,22 +1096,22 @@ function handleViewerMessage(
         send(
             camera,
             {
-
                 type:
                     "answer",
 
                 viewerId:
                     viewerId,
 
+                cameraId:
+                    msg.cameraId,
+
                 answer:
                     msg.answer
-
             }
         );
 
 
         return;
-
     }
 
 
@@ -1260,8 +1120,7 @@ function handleViewerMessage(
     ===================================================== */
 
     if (
-        msg.type ===
-        "candidate"
+        msg.type === "candidate"
     ) {
 
         if (
@@ -1270,7 +1129,6 @@ function handleViewerMessage(
         ) {
 
             return;
-
         }
 
 
@@ -1290,34 +1148,31 @@ function handleViewerMessage(
         send(
             camera,
             {
-
                 type:
                     "candidate",
 
                 viewerId:
                     viewerId,
 
+                cameraId:
+                    msg.cameraId,
+
                 candidate:
                     msg.candidate
-
             }
         );
 
 
         return;
-
     }
-
 }
 
 
 /* =========================================================
-   REMOVE VIEWER
+   VIEWER DISCONNECT
 ========================================================= */
 
-function removeViewer(
-    ws
-) {
+function removeViewer(ws) {
 
     const viewerId =
         ws.viewerId;
@@ -1329,15 +1184,12 @@ function removeViewer(
 
 
     if (
-        viewers.get(
-            viewerId
-        ) === ws
+        viewers.get(viewerId) === ws
     ) {
 
         viewers.delete(
             viewerId
         );
-
     }
 
 
@@ -1348,7 +1200,8 @@ function removeViewer(
 
 
     /*
-     * Tell cameras.
+     * Tell cameras so they can
+     * clean up their WebRTC peer.
      */
 
     for (
@@ -1359,23 +1212,19 @@ function removeViewer(
         send(
             camera,
             {
-
                 type:
                     "viewer-offline",
 
                 viewerId:
                     viewerId
-
             }
         );
-
     }
-
 }
 
 
 /* =========================================================
-   CLEANUP DEAD SOCKETS
+   CLEAN DEAD CONNECTIONS
 ========================================================= */
 
 setInterval(
@@ -1394,12 +1243,8 @@ setInterval(
                 WebSocket.CLOSED
             ) {
 
-                removeCamera(
-                    ws
-                );
-
+                removeCamera(ws);
             }
-
         }
 
 
@@ -1416,12 +1261,8 @@ setInterval(
                 WebSocket.CLOSED
             ) {
 
-                removeViewer(
-                    ws
-                );
-
+                removeViewer(ws);
             }
-
         }
 
     },
@@ -1430,7 +1271,23 @@ setInterval(
 
 
 /* =========================================================
-   START SERVER
+   SERVER ERROR
+========================================================= */
+
+server.on(
+    "error",
+    error => {
+
+        console.error(
+            "SERVER ERROR:",
+            error
+        );
+    }
+);
+
+
+/* =========================================================
+   START
 ========================================================= */
 
 server.listen(
@@ -1439,7 +1296,7 @@ server.listen(
     () => {
 
         console.log(
-            "================================="
+            "================================"
         );
 
         console.log(
@@ -1471,25 +1328,7 @@ server.listen(
         );
 
         console.log(
-            "================================="
+            "================================"
         );
-
-    }
-);
-
-
-/* =========================================================
-   SERVER ERROR
-========================================================= */
-
-server.on(
-    "error",
-    error => {
-
-        console.error(
-            "Server error:",
-            error
-        );
-
     }
 );
