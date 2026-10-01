@@ -10,15 +10,8 @@ const PORT = process.env.PORT || 10000;
 
 const NTFY_TOPIC = process.env.NTFY_TOPIC || "";
 
-const CAMERA_FILE = path.join(
-    __dirname,
-    "camera.html"
-);
-
-const VIEWER_FILE = path.join(
-    __dirname,
-    "viewer.html"
-);
+const CAMERA_FILE = path.join(__dirname, "camera.html");
+const VIEWER_FILE = path.join(__dirname, "viewer.html");
 
 
 /* =========================================================
@@ -31,18 +24,13 @@ function mobileNotification(message) {
         return;
     }
 
-    const data = Buffer.from(
-        message,
-        "utf8"
-    );
+    const data = Buffer.from(message, "utf8");
 
     const request = https.request(
         {
             hostname: "ntfy.sh",
 
-            path:
-                "/" +
-                encodeURIComponent(NTFY_TOPIC),
+            path: "/" + encodeURIComponent(NTFY_TOPIC),
 
             method: "POST",
 
@@ -63,31 +51,21 @@ function mobileNotification(message) {
 
         response => {
 
-            response.on(
-                "data",
-                () => {}
-            );
+            response.on("data", () => {});
 
-            response.on(
-                "end",
-                () => {}
-            );
+            response.on("end", () => {});
         }
     );
 
-    request.on(
-        "error",
-        error => {
+    request.on("error", error => {
 
-            console.error(
-                "NTFY error:",
-                error.message
-            );
-        }
-    );
+        console.error(
+            "NTFY error:",
+            error.message
+        );
+    });
 
     request.write(data);
-
     request.end();
 }
 
@@ -117,28 +95,29 @@ function makeId(prefix) {
 function send(ws, message) {
 
     if (
-        ws &&
-        ws.readyState === WebSocket.OPEN
+        !ws ||
+        ws.readyState !== WebSocket.OPEN
     ) {
-
-        try {
-
-            ws.send(
-                JSON.stringify(message)
-            );
-
-            return true;
-
-        } catch (error) {
-
-            console.error(
-                "Send error:",
-                error.message
-            );
-        }
+        return false;
     }
 
-    return false;
+    try {
+
+        ws.send(
+            JSON.stringify(message)
+        );
+
+        return true;
+
+    } catch (error) {
+
+        console.error(
+            "WebSocket send error:",
+            error.message
+        );
+
+        return false;
+    }
 }
 
 
@@ -146,19 +125,11 @@ function send(ws, message) {
    BROADCAST
 ========================================================= */
 
-function broadcast(
-    collection,
-    message
-) {
+function broadcast(collection, message) {
 
-    for (
-        const ws of collection.values()
-    ) {
+    for (const ws of collection.values()) {
 
-        send(
-            ws,
-            message
-        );
+        send(ws, message);
     }
 }
 
@@ -168,10 +139,7 @@ function broadcast(
 ========================================================= */
 
 const cameras = new Map();
-
 const viewers = new Map();
-
-const cameraStates = new Map();
 
 
 /* =========================================================
@@ -193,7 +161,6 @@ const server = http.createServer(
         } catch {
 
             res.writeHead(400);
-
             res.end("Bad Request");
 
             return;
@@ -276,21 +243,16 @@ const server = http.createServer(
             }
         );
 
-        res.end(
-            "Not Found"
-        );
+        res.end("Not Found");
     }
 );
 
 
 /* =========================================================
-   SERVE HTML
+   SERVE FILE
 ========================================================= */
 
-function serveFile(
-    file,
-    res
-) {
+function serveFile(file, res) {
 
     fs.readFile(
         file,
@@ -311,9 +273,7 @@ function serveFile(
                     }
                 );
 
-                res.end(
-                    "Server error"
-                );
+                res.end("Server error");
 
                 return;
             }
@@ -342,7 +302,6 @@ function serveFile(
 
 const wss =
     new WebSocket.Server({
-
         server,
 
         maxPayload:
@@ -383,10 +342,12 @@ wss.on(
 
 
         console.log(
-            "WebSocket:",
+            "WebSocket connected:",
             route
         );
 
+
+        /* CAMERA */
 
         if (route === "/camera") {
 
@@ -395,6 +356,8 @@ wss.on(
             return;
         }
 
+
+        /* VIEWER */
 
         if (route === "/viewer") {
 
@@ -428,14 +391,6 @@ function handleCamera(ws) {
     );
 
 
-    cameraStates.set(
-        cameraId,
-        {
-            live: false
-        }
-    );
-
-
     ws.cameraId =
         cameraId;
 
@@ -449,7 +404,7 @@ function handleCamera(ws) {
     );
 
 
-    /* Send camera ID */
+    /* Tell camera its ID */
 
     send(
         ws,
@@ -458,7 +413,8 @@ function handleCamera(ws) {
 
             role: "camera",
 
-            cameraId: cameraId
+            cameraId:
+                cameraId
         }
     );
 
@@ -469,19 +425,19 @@ function handleCamera(ws) {
     );
 
 
-    /* Tell existing viewers */
+    /* Tell viewers */
 
     broadcast(
         viewers,
         {
-            type: "camera-online",
+            type:
+                "camera-online",
 
-            cameraId: cameraId
+            cameraId:
+                cameraId
         }
     );
 
-
-    /* Camera messages */
 
     ws.on(
         "message",
@@ -494,8 +450,6 @@ function handleCamera(ws) {
         }
     );
 
-
-    /* Camera closed */
 
     ws.on(
         "close",
@@ -523,10 +477,7 @@ function handleCamera(ws) {
    CAMERA MESSAGE
 ========================================================= */
 
-function handleCameraMessage(
-    ws,
-    raw
-) {
+function handleCameraMessage(ws, raw) {
 
     let msg;
 
@@ -539,7 +490,7 @@ function handleCameraMessage(
     } catch {
 
         console.log(
-            "Invalid camera message"
+            "Invalid camera JSON"
         );
 
         return;
@@ -567,33 +518,22 @@ function handleCameraMessage(
             true;
 
 
-        const state =
-            cameraStates.get(
-                cameraId
-            );
-
-
-        if (state) {
-
-            state.live =
-                true;
-        }
-
-
         console.log(
-            "Camera LIVE:",
+            "Camera is LIVE:",
             cameraId
         );
 
 
         /*
-         * Tell every viewer.
+         * Tell every viewer that
+         * this camera is live.
          */
 
         broadcast(
             viewers,
             {
-                type: "camera-live",
+                type:
+                    "camera-live",
 
                 cameraId:
                     cameraId
@@ -602,8 +542,10 @@ function handleCameraMessage(
 
 
         /*
-         * Create WebRTC connection
-         * for every existing viewer.
+         * IMPORTANT:
+         *
+         * Ask the camera to create
+         * an offer for every viewer.
          */
 
         for (
@@ -629,7 +571,7 @@ function handleCameraMessage(
 
 
     /* =====================================================
-       OFFER FROM CAMERA
+       OFFER CAMERA -> VIEWER
     ===================================================== */
 
     if (
@@ -637,8 +579,11 @@ function handleCameraMessage(
     ) {
 
         const viewerId =
-            msg.viewerId ||
-            msg.toViewerId;
+            String(
+                msg.viewerId ||
+                msg.toViewerId ||
+                ""
+            );
 
 
         if (
@@ -647,7 +592,7 @@ function handleCameraMessage(
         ) {
 
             console.log(
-                "Invalid offer"
+                "Invalid camera offer"
             );
 
             return;
@@ -656,7 +601,7 @@ function handleCameraMessage(
 
         const viewer =
             viewers.get(
-                String(viewerId)
+                viewerId
             );
 
 
@@ -671,10 +616,19 @@ function handleCameraMessage(
         }
 
 
+        console.log(
+            "Offer:",
+            cameraId,
+            "->",
+            viewerId
+        );
+
+
         send(
             viewer,
             {
-                type: "offer",
+                type:
+                    "offer",
 
                 cameraId:
                     cameraId,
@@ -690,7 +644,45 @@ function handleCameraMessage(
 
 
     /* =====================================================
-       ICE FROM CAMERA
+       ANSWER VIEWER -> CAMERA
+    ===================================================== */
+
+    if (
+        msg.type === "answer"
+    ) {
+
+        const viewerId =
+            String(
+                msg.viewerId ||
+                ""
+            );
+
+
+        if (
+            !viewerId ||
+            !msg.answer
+        ) {
+
+            console.log(
+                "Invalid camera answer"
+            );
+
+            return;
+        }
+
+
+        /*
+         * Normally the answer comes
+         * from viewer, but if camera
+         * sends one, ignore it.
+         */
+
+        return;
+    }
+
+
+    /* =====================================================
+       ICE CAMERA -> VIEWER
     ===================================================== */
 
     if (
@@ -698,8 +690,11 @@ function handleCameraMessage(
     ) {
 
         const viewerId =
-            msg.viewerId ||
-            msg.toViewerId;
+            String(
+                msg.viewerId ||
+                msg.toViewerId ||
+                ""
+            );
 
 
         if (
@@ -713,7 +708,7 @@ function handleCameraMessage(
 
         const viewer =
             viewers.get(
-                String(viewerId)
+                viewerId
             );
 
 
@@ -725,7 +720,8 @@ function handleCameraMessage(
         send(
             viewer,
             {
-                type: "candidate",
+                type:
+                    "candidate",
 
                 cameraId:
                     cameraId,
@@ -764,11 +760,6 @@ function removeCamera(ws) {
             cameraId
         );
     }
-
-
-    cameraStates.delete(
-        cameraId
-    );
 
 
     console.log(
@@ -822,14 +813,18 @@ function handleViewer(ws) {
     );
 
 
-    /* Send viewer role */
+    /*
+     * Send viewer information.
+     */
 
     send(
         ws,
         {
-            type: "role",
+            type:
+                "role",
 
-            role: "viewer",
+            role:
+                "viewer",
 
             viewerId:
                 viewerId,
@@ -843,8 +838,7 @@ function handleViewer(ws) {
 
 
     /*
-     * Send all currently connected
-     * cameras.
+     * Send all cameras.
      */
 
     for (
@@ -885,8 +879,6 @@ function handleViewer(ws) {
     }
 
 
-    /* Viewer messages */
-
     ws.on(
         "message",
         raw => {
@@ -898,8 +890,6 @@ function handleViewer(ws) {
         }
     );
 
-
-    /* Viewer disconnected */
 
     ws.on(
         "close",
@@ -927,10 +917,7 @@ function handleViewer(ws) {
    VIEWER MESSAGE
 ========================================================= */
 
-function handleViewerMessage(
-    ws,
-    raw
-) {
+function handleViewerMessage(ws, raw) {
 
     let msg;
 
@@ -943,7 +930,7 @@ function handleViewerMessage(
     } catch {
 
         console.log(
-            "Invalid viewer message"
+            "Invalid viewer JSON"
         );
 
         return;
@@ -968,7 +955,8 @@ function handleViewerMessage(
     ) {
 
         /*
-         * Viewer is asking for all cameras.
+         * If no camera selected,
+         * send all available cameras.
          */
 
         if (!msg.cameraId) {
@@ -1016,8 +1004,7 @@ function handleViewerMessage(
 
 
         /*
-         * Viewer specifically selected
-         * a camera.
+         * Specific camera.
          */
 
         const camera =
@@ -1031,7 +1018,7 @@ function handleViewerMessage(
         if (!camera) {
 
             console.log(
-                "Requested camera not found:",
+                "Camera not found:",
                 msg.cameraId
             );
 
@@ -1039,8 +1026,17 @@ function handleViewerMessage(
         }
 
 
+        console.log(
+            "Viewer ready:",
+            viewerId,
+            "Camera:",
+            msg.cameraId
+        );
+
+
         /*
-         * Tell camera to create offer.
+         * Tell camera to create
+         * WebRTC offer.
          */
 
         send(
@@ -1060,7 +1056,7 @@ function handleViewerMessage(
 
 
     /* =====================================================
-       ANSWER FROM VIEWER
+       ANSWER VIEWER -> CAMERA
     ===================================================== */
 
     if (
@@ -1073,7 +1069,7 @@ function handleViewerMessage(
         ) {
 
             console.log(
-                "Invalid answer"
+                "Invalid viewer answer"
             );
 
             return;
@@ -1091,6 +1087,14 @@ function handleViewerMessage(
         if (!camera) {
             return;
         }
+
+
+        console.log(
+            "Answer:",
+            viewerId,
+            "->",
+            msg.cameraId
+        );
 
 
         send(
@@ -1116,7 +1120,7 @@ function handleViewerMessage(
 
 
     /* =====================================================
-       ICE FROM VIEWER
+       ICE VIEWER -> CAMERA
     ===================================================== */
 
     if (
@@ -1200,8 +1204,8 @@ function removeViewer(ws) {
 
 
     /*
-     * Tell cameras so they can
-     * clean up their WebRTC peer.
+     * Tell every camera to close
+     * the WebRTC peer for this viewer.
      */
 
     for (
@@ -1224,7 +1228,7 @@ function removeViewer(ws) {
 
 
 /* =========================================================
-   CLEAN DEAD CONNECTIONS
+   CLEAN CLOSED SOCKETS
 ========================================================= */
 
 setInterval(
@@ -1240,7 +1244,9 @@ setInterval(
 
             if (
                 ws.readyState ===
-                WebSocket.CLOSED
+                    WebSocket.CLOSED ||
+                ws.readyState ===
+                    WebSocket.CLOSING
             ) {
 
                 removeCamera(ws);
@@ -1258,7 +1264,9 @@ setInterval(
 
             if (
                 ws.readyState ===
-                WebSocket.CLOSED
+                    WebSocket.CLOSED ||
+                ws.readyState ===
+                    WebSocket.CLOSING
             ) {
 
                 removeViewer(ws);
@@ -1318,6 +1326,14 @@ server.listen(
 
         console.log(
             "Health: /health"
+        );
+
+        console.log(
+            "WebSocket camera: /camera"
+        );
+
+        console.log(
+            "WebSocket viewer: /viewer"
         );
 
         console.log(
