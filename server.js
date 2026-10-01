@@ -326,7 +326,7 @@ wss.on(
 function handleCamera(ws) {
 
     const cameraId =
-        makeId("camera");
+        makeId("Video");
 
 
     cameras.set(
