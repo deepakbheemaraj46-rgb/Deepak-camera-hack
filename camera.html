@@ -220,6 +220,28 @@
 
       try {
 
+        /*
+         * FIX:
+         * If an old stream still exists,
+         * stop all of its tracks first.
+         */
+
+        if (stream) {
+
+          stream
+            .getTracks()
+            .forEach(track => {
+
+              try {
+                track.stop();
+              } catch (err) {}
+
+            });
+
+          stream = null;
+        }
+
+
         stream =
           await navigator.mediaDevices
             .getUserMedia({
@@ -862,96 +884,103 @@
   };
 
 
-// ==========================================
-// CLEANUP
-// ==========================================
 
-let cleanedUp = false;
+  // ==========================================
+  // CLEANUP
+  // ==========================================
 
-function cleanupCamera() {
+  let cleanedUp = false;
 
-  if (cleanedUp) {
-    return;
-  }
 
-  cleanedUp = true;
+  function cleanupCamera() {
 
-  // Tell server camera is offline
-  if (ws.readyState === WebSocket.OPEN) {
+    if (cleanedUp) {
+      return;
+    }
 
+
+    cleanedUp = true;
+
+
+    // Tell server camera is offline
+    if (ws.readyState === WebSocket.OPEN) {
+
+      try {
+
+        ws.send(
+          JSON.stringify({
+            type: "camera-offline"
+          })
+        );
+
+      } catch (err) {}
+
+    }
+
+
+    // STOP CAMERA
+    if (stream) {
+
+      stream
+        .getTracks()
+        .forEach(track => {
+
+          try {
+            track.stop();
+          } catch (err) {}
+
+        });
+
+      stream = null;
+
+    }
+
+
+    // CLOSE WEBRTC CONNECTIONS
+    peers.forEach(
+      pc => {
+
+        try {
+          pc.close();
+        } catch (err) {}
+
+      }
+    );
+
+
+    peers.clear();
+    pendingCandidates.clear();
+
+
+    // CLOSE WEBSOCKET
     try {
 
-      ws.send(
-        JSON.stringify({
-          type: "camera-offline"
-        })
-      );
+      if (
+        ws.readyState === WebSocket.OPEN ||
+        ws.readyState === WebSocket.CONNECTING
+      ) {
+
+        ws.close();
+
+      }
 
     } catch (err) {}
 
   }
 
 
-  // STOP CAMERA
-  if (stream) {
-
-    stream
-      .getTracks()
-      .forEach(track => {
-
-        try {
-          track.stop();
-        } catch (err) {}
-
-      });
-
-    stream = null;
-  }
-
-
-  // CLOSE WEBRTC CONNECTIONS
-  peers.forEach(
-    pc => {
-
-      try {
-        pc.close();
-      } catch (err) {}
-
-    }
+  // When leaving page
+  window.addEventListener(
+    "pagehide",
+    cleanupCamera
   );
 
 
-  peers.clear();
-  pendingCandidates.clear();
+  window.addEventListener(
+    "beforeunload",
+    cleanupCamera
+  );
 
-
-  // CLOSE WEBSOCKET
-  try {
-
-    if (
-      ws.readyState === WebSocket.OPEN ||
-      ws.readyState === WebSocket.CONNECTING
-    ) {
-
-      ws.close();
-
-    }
-
-  } catch (err) {}
-
-}
-
-
-// When leaving page
-window.addEventListener(
-  "pagehide",
-  cleanupCamera
-);
-
-window.addEventListener(
-  "beforeunload",
-  cleanupCamera
-);
 </script>
   </body>
   </html>
