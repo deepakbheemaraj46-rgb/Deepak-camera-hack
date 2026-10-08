@@ -993,6 +993,17 @@ window.addEventListener(
   "beforeunload",
   cleanupCamera
 );
+    // ==========================================
+// FORCE FRESH PAGE WHEN RETURNING WITH BACK
+// ==========================================
+
+window.addEventListener("pageshow", function (event) {
+
+  if (event.persisted) {
+    window.location.reload();
+  }
+
+});
   </script>
   </body>
   </html>
