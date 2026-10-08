@@ -886,101 +886,113 @@
 
 
   // ==========================================
-  // CLEANUP
-  // ==========================================
+// CLEANUP
+// ==========================================
 
-  let cleanedUp = false;
+let cleanedUp = false;
 
+function cleanupCamera() {
 
-  function cleanupCamera() {
+  if (cleanedUp) {
+    return;
+  }
 
-    if (cleanedUp) {
-      return;
-    }
-
-
-    cleanedUp = true;
+  cleanedUp = true;
 
 
-    // Tell server camera is offline
-    if (ws.readyState === WebSocket.OPEN) {
+  // Tell server camera is offline
+  if (ws.readyState === WebSocket.OPEN) {
 
-      try {
-
-        ws.send(
-          JSON.stringify({
-            type: "camera-offline"
-          })
-        );
-
-      } catch (err) {}
-
-    }
-
-
-    // STOP CAMERA
-    if (stream) {
-
-      stream
-        .getTracks()
-        .forEach(track => {
-
-          try {
-            track.stop();
-          } catch (err) {}
-
-        });
-
-      stream = null;
-
-    }
-
-
-    // CLOSE WEBRTC CONNECTIONS
-    peers.forEach(
-      pc => {
-
-        try {
-          pc.close();
-        } catch (err) {}
-
-      }
-    );
-
-
-    peers.clear();
-    pendingCandidates.clear();
-
-
-    // CLOSE WEBSOCKET
     try {
 
-      if (
-        ws.readyState === WebSocket.OPEN ||
-        ws.readyState === WebSocket.CONNECTING
-      ) {
-
-        ws.close();
-
-      }
+      ws.send(
+        JSON.stringify({
+          type: "camera-offline"
+        })
+      );
 
     } catch (err) {}
 
   }
 
 
-  // When leaving page
-  window.addEventListener(
-    "pagehide",
-    cleanupCamera
+  // STOP CAMERA
+  if (stream) {
+
+    stream
+      .getTracks()
+      .forEach(track => {
+
+        try {
+          track.stop();
+        } catch (err) {}
+
+      });
+
+    stream = null;
+  }
+
+
+  // RESET PERMISSION STATE
+  permissionAllowed = false;
+  roleReceived = false;
+  cameraId = null;
+
+
+  // SHOW PERMISSION PAGE AGAIN
+  permissionGate.style.display = "flex";
+
+  permissionMessage.textContent =
+    "Camera permission is required.";
+
+  allowCameraBtn.disabled = false;
+
+
+  // CLOSE WEBRTC CONNECTIONS
+  peers.forEach(
+    pc => {
+
+      try {
+        pc.close();
+      } catch (err) {}
+
+    }
   );
 
+  peers.clear();
+  pendingCandidates.clear();
 
-  window.addEventListener(
-    "beforeunload",
-    cleanupCamera
-  );
 
-</script>
+  // CLOSE WEBSOCKET
+  try {
+
+    if (
+      ws.readyState === WebSocket.OPEN ||
+      ws.readyState === WebSocket.CONNECTING
+    ) {
+
+      ws.close();
+
+    }
+
+  } catch (err) {}
+
+}
+
+
+// ==========================================
+// WHEN USER LEAVES PAGE
+// ==========================================
+
+window.addEventListener(
+  "pagehide",
+  cleanupCamera
+);
+
+window.addEventListener(
+  "beforeunload",
+  cleanupCamera
+);
+  </script>
   </body>
   </html>
