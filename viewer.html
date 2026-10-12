@@ -315,41 +315,33 @@ item.video.play()
 
   };
 
-  pc.onconnectionstatechange = () => {
 
-    console.log(
-      "Connection state:",
-      pc.connectionState
-    );
+pc.onconnectionstatechange = () => {
+  console.log("Connection state:", pc.connectionState);
 
-    if (
-      pc.connectionState === "connected"
-    ) {
+  if (pc.connectionState === "connected") {
+    status.textContent = "🟢 Camera is LIVE";
+  }
 
-      status.textContent =
-        "🟢 Camera is LIVE";
+  if (pc.connectionState === "disconnected") {
+    status.textContent = "🟡 Connection interrupted...";
+  }
 
-    }
+  if (pc.connectionState === "failed") {
+    status.textContent = "🔴 Connection failed";
 
-    if (
-      pc.connectionState === "disconnected"
-    ) {
+    setTimeout(() => {
+      if (peers.get(cameraId) === pc) {
+        removeCamera(cameraId);
+        startPeer(cameraId);
+      }
+    }, 2000);
+  }
 
-      status.textContent =
-        "🟡 Connection interrupted...";
-
-    }
-
-    if (
-      pc.connectionState === "failed"
-    ) {
-
-      status.textContent =
-        "🔴 Connection failed";
-
-    }
-
-  };
+  if (pc.connectionState === "closed") {
+    console.log("Peer connection closed:", cameraId);
+  }
+};
 
   pc.oniceconnectionstatechange = () => {
 
