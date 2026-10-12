@@ -1004,7 +1004,7 @@ document.addEventListener("visibilitychange", () => {
     stream = null;
   }
 
-  sendMessage({ type: "camera-offline" });
+  
 
   peers.forEach(pc => {
     try {
@@ -1018,7 +1018,7 @@ document.addEventListener("visibilitychange", () => {
   permissionAllowed = false;
   permissionGate.style.display = "flex";
   permissionMessage.textContent =
-    "Camera permission is required.";
+    "permission is required.";
   allowCameraBtn.disabled = false;
 
   status.textContent = "Camera permission required";
