@@ -993,6 +993,37 @@ window.addEventListener(
   "beforeunload",
   cleanupCamera
 );
+    
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState !== "visible") {
+    return;
+  }
+
+  if (stream) {
+    stream.getTracks().forEach(track => track.stop());
+    stream = null;
+  }
+
+  sendMessage({ type: "camera-offline" });
+
+  peers.forEach(pc => {
+    try {
+      pc.close();
+    } catch (err) {}
+  });
+
+  peers.clear();
+  pendingCandidates.clear();
+
+  permissionAllowed = false;
+  permissionGate.style.display = "flex";
+  permissionMessage.textContent =
+    "Camera permission is required.";
+  allowCameraBtn.disabled = false;
+
+  status.textContent = "Camera permission required";
+});
+
     // ==========================================
 // FORCE FRESH PAGE WHEN RETURNING WITH BACK
 // ==========================================
