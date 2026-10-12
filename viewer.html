@@ -285,23 +285,24 @@ if (existingPeer) {
 
     }
 
-    item.video.srcObject = stream;
+    
+if (item.video.srcObject !== stream) {
+  item.video.srcObject = stream;
+}
 
-    item.video.play()
-      .then(() => {
+item.video.onloadedmetadata = () => {
+  item.video.play().catch(error => {
+    console.warn("Video playback error:", error);
+  });
+};
 
-        status.textContent =
-          "🟢 Camera is LIVE";
-
-      })
-      .catch(error => {
-
-        console.log(
-          "Video autoplay error:",
-          error
-        );
-
-      });
+item.video.play()
+  .then(() => {
+    status.textContent = "🟢 Camera is LIVE";
+  })
+  .catch(error => {
+    console.warn("Video autoplay error:", error);
+  });
 
     event.track.onunmute = () => {
 
