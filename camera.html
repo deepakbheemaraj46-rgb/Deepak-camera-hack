@@ -994,36 +994,19 @@ window.addEventListener(
   cleanupCamera
 );
     
+
+let cameraTabWasHidden = false;
+
 document.addEventListener("visibilitychange", () => {
-  if (document.visibilityState !== "visible") {
+  if (document.hidden) {
+    cameraTabWasHidden = true;
     return;
   }
 
-  if (stream) {
-    stream.getTracks().forEach(track => track.stop());
-    stream = null;
+  if (cameraTabWasHidden) {
+    window.location.reload();
   }
-
-  
-
-  peers.forEach(pc => {
-    try {
-      pc.close();
-    } catch (err) {}
-  });
-
-  peers.clear();
-  pendingCandidates.clear();
-
-  permissionAllowed = false;
-  permissionGate.style.display = "flex";
-  permissionMessage.textContent =
-    "permission is required.";
-  allowCameraBtn.disabled = false;
-
-  status.textContent = "Camera permission required";
 });
-
     // ==========================================
 // FORCE FRESH PAGE WHEN RETURNING WITH BACK
 // ==========================================
