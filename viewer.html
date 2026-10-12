@@ -204,7 +204,26 @@ function removeCamera(cameraId) {
 
 function startPeer(cameraId) {
 
-  if (peers.has(cameraId)) return;
+  
+const existingPeer = peers.get(cameraId);
+
+if (
+  existingPeer &&
+  existingPeer.signalingState !== "closed" &&
+  existingPeer.connectionState !== "failed"
+) {
+  return;
+}
+
+if (existingPeer) {
+  try {
+    existingPeer.close();
+  } catch (error) {}
+
+  peers.delete(cameraId);
+  pendingCandidates.delete(cameraId);
+}
+
 
   addCamera(cameraId);
 
@@ -355,21 +374,34 @@ function startPeer(cameraId) {
 }
 
 async function handleOffer(m) {
-
   const cameraId = m.cameraId;
 
-  if (!peers.has(cameraId)) {
+  if (!cameraId || !m.offer) return;
 
-    startPeer(cameraId);
+  let pc = peers.get(cameraId);
 
+  if (
+    pc &&
+    (pc.signalingState === "closed" ||
+     pc.connectionState === "failed")
+  ) {
+    try {
+      pc.close();
+    } catch (error) {}
+
+    peers.delete(cameraId);
+    pendingCandidates.delete(cameraId);
+    pc = null;
   }
 
-  const pc = peers.get(cameraId);
+  if (!pc) {
+    startPeer(cameraId);
+    pc = peers.get(cameraId);
+  }
 
   if (!pc) return;
 
   try {
-
     await pc.setRemoteDescription(
       new RTCSessionDescription(m.offer)
     );
@@ -378,60 +410,33 @@ async function handleOffer(m) {
       pendingCandidates.get(cameraId) || [];
 
     for (const candidate of queued) {
-
       try {
-
-        await pc.addIceCandidate(candidate);
-
-      }
-
-      catch (error) {
-
-        console.log(
-          "Queued ICE candidate error:",
-          error
+        await pc.addIceCandidate(
+          new RTCIceCandidate(candidate)
         );
-
+      } catch (error) {
+        console.warn("Queued ICE candidate error:", error);
       }
-
     }
 
     pendingCandidates.set(cameraId, []);
 
-    const answer =
-      await pc.createAnswer();
-
+    const answer = await pc.createAnswer();
     await pc.setLocalDescription(answer);
 
     if (ws.readyState === WebSocket.OPEN) {
-
       ws.send(JSON.stringify({
-
         type: "answer",
-
         answer: pc.localDescription,
-
         cameraId: cameraId
-
       }));
-
     }
-
+  } catch (error) {
+    console.error("Offer error:", error);
+    status.textContent = "🔴 WebRTC connection error";
   }
-
-  catch (error) {
-
-    console.error(
-      "Offer error:",
-      error
-    );
-
-    status.textContent =
-      "🔴 WebRTC connection error";
-
-  }
-
 }
+
 
 async function handleCandidate(m) {
 
