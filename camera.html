@@ -635,15 +635,7 @@ ideal: 720
         try {
 
           const offer =
-            await pc.createOffer({
-
-              offerToReceiveAudio:
-                false,
-
-              offerToReceiveVideo:
-                false
-
-            });
+await pc.createOffer();
 
 
           await pc.setLocalDescription(
