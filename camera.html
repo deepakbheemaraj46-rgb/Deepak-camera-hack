@@ -952,18 +952,20 @@ function cleanupCamera() {
   peers.clear();
   pendingCandidates.clear();
 
+// CLOSE WEBSOCKET
 
-  // CLOSE WEBSOCKET
-  try {
+try {
+      if (
+        ws.readyState === WebSocket.OPEN ||
+        ws.readyState === WebSocket.CONNECTING
+      ) {
+        ws.close();
+      }
+    } catch (err) {
+      console.error("WebSocket close error:", err);
+    }
+  }
 
-    if (
-      ws.readyState === WebSocket.OPEN ||
-      ws.readyState === WebSocket.CONNECTING
-    ) {
-
-      ws.close();
-
-}
 
 
 // ==========================================
