@@ -985,18 +985,7 @@ window.addEventListener(
 );
     
 
-let cameraTabWasHidden = false;
 
-document.addEventListener("visibilitychange", () => {
-  if (document.hidden) {
-    cameraTabWasHidden = true;
-    return;
-  }
-
-  if (cameraTabWasHidden) {
-    window.location.reload();
-  }
-});
     // ==========================================
 // FORCE FRESH PAGE WHEN RETURNING WITH BACK
 // ==========================================
