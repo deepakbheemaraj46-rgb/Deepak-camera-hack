@@ -960,31 +960,17 @@ document.addEventListener(
       }
     }
   }
-);
-document.addEventListener(
-  "visibilitychange",
-  () => {
-
-    if (document.hidden) {
-
-      console.log("TAB HIDDEN");
-
-    } else {
-
-      console.log("TAB ACTIVE");
-
-      announceCameraLive();
-
-      peers.forEach(pc => {
-        console.log(
-          "State:",
-          pc.connectionState
-        );
-      });
-
-    }
-
-  }
+);document.addEventListener(
+"visibilitychange",
+() => {
+ 
+if (!document.hidden) {
+ 
+location.reload();
+ 
+}
+ 
+}
 );
   </script>
   </body>
