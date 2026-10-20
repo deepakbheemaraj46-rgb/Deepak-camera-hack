@@ -962,18 +962,30 @@ document.addEventListener(
   }
 );
 document.addEventListener(
-"visibilitychange",
-() => {
- 
-if (!document.hidden) {
- 
-announceCameraLive();
- 
-}
- 
-}
-);
+  "visibilitychange",
+  () => {
 
+    if (document.hidden) {
+
+      console.log("TAB HIDDEN");
+
+    } else {
+
+      console.log("TAB ACTIVE");
+
+      announceCameraLive();
+
+      peers.forEach(pc => {
+        console.log(
+          "State:",
+          pc.connectionState
+        );
+      });
+
+    }
+
+  }
+);
   </script>
   </body>
   </html>
