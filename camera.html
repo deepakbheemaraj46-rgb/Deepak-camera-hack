@@ -961,38 +961,6 @@ document.addEventListener(
     }
   }
 );
-setInterval(() => {
-
-  if (!stream) return;
-
-  const track =
-    stream.getVideoTracks()[0];
-
-  if (
-    !track ||
-    track.readyState !== "live"
-  ) {
-
-    console.log(
-      "Camera lost"
-    );
-
-    location.reload();
-  }
-
-}, 5000);
-
-document.addEventListener(
-  "visibilitychange",
-  () => {
-
-    if (!document.hidden) {
-
-      announceCameraLive();
-
-    }
-  }
-);
 
 
   </script>
