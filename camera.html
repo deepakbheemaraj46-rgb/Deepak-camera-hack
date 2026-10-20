@@ -275,8 +275,7 @@ ideal: 720
             });
 
 
-        permissionAllowed =
-          true;
+        permissionAllowed = true;
 
 const track = stream.getVideoTracks()[0];
 
@@ -284,16 +283,16 @@ track.onended = () => {
   console.log("Camera stopped");
   location.reload();
 };
-        permissionGate.style.display =
-          "none";
 
+permissionGate.style.display =
+  "none";
 
-        // Show actual camera resolution
-        const track =
-          stream.getVideoTracks()[0];
+// Show actual camera resolution
+const track =
+  stream.getVideoTracks()[0];
 
-        const settings =
-          track.getSettings();
+const settings =
+  track.getSettings();
 
 
         console.log(
