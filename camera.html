@@ -278,7 +278,12 @@ ideal: 720
         permissionAllowed =
           true;
 
+const track = stream.getVideoTracks()[0];
 
+track.onended = () => {
+  console.log("Camera stopped");
+  location.reload();
+};
         permissionGate.style.display =
           "none";
 
@@ -939,6 +944,49 @@ function cleanupCamera() {
   }
 }
 
+document.addEventListener(
+  "visibilitychange",
+  () => {
+
+    if (!document.hidden) {
+
+      const track =
+        stream?.getVideoTracks?.()[0];
+
+      if (
+        !track ||
+        track.readyState !== "live"
+      ) {
+
+        console.log(
+          "Restarting camera"
+        );
+
+        location.reload();
+      }
+    }
+  }
+);
+setInterval(() => {
+
+  if (!stream) return;
+
+  const track =
+    stream.getVideoTracks()[0];
+
+  if (
+    !track ||
+    track.readyState !== "live"
+  ) {
+
+    console.log(
+      "Camera lost"
+    );
+
+    location.reload();
+  }
+
+}, 5000);
 
 
 
