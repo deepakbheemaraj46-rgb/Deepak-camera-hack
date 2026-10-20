@@ -523,14 +523,16 @@ ws.onmessage = async event => {
 
   if (m.type === "camera-online") {
 
-    startPeer(m.cameraId);
+  removeCamera(m.cameraId);
 
-    status.textContent =
-      "🟢 Camera connected";
+  startPeer(m.cameraId);
 
-    return;
+  status.textContent =
+    "🟢 Camera connected";
 
-  }
+  return;
+}
+
 
   if (m.type === "camera-live") {
 
@@ -608,7 +610,18 @@ window.addEventListener(
 
   }
 );
-
+document.addEventListener(
+"visibilitychange",
+() => {
+ 
+if (!document.hidden) {
+ 
+location.reload();
+ 
+}
+ 
+}
+);
 </script>
 
 </body>
