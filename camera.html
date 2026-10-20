@@ -961,7 +961,18 @@ document.addEventListener(
     }
   }
 );
-
+document.addEventListener(
+"visibilitychange",
+() => {
+ 
+if (!document.hidden) {
+ 
+announceCameraLive();
+ 
+}
+ 
+}
+);
 
   </script>
   </body>
