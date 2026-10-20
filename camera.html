@@ -345,14 +345,14 @@ track.getSettings();
 
 
     if (old) {
-
-      try {
-        old.close();
-      } catch (err) {}
-
-      peers.delete(viewerId);
-
-    }
+ 
+try {
+old.close();
+} catch (err) {}
+ 
+peers.delete(viewerId);
+pendingCandidates.delete(viewerId);
+}
 
 
     const pc =
@@ -424,11 +424,10 @@ track.getSettings();
 
 
         if (
-          pc.connectionState ===
-            "failed" ||
-          pc.connectionState ===
-            "closed"
-        ) {
+pc.connectionState === "failed" ||
+pc.connectionState === "closed" ||
+pc.connectionState === "disconnected"
+) {
 
           try {
             pc.close();
@@ -983,6 +982,17 @@ setInterval(() => {
 
 }, 5000);
 
+document.addEventListener(
+  "visibilitychange",
+  () => {
+
+    if (!document.hidden) {
+
+      announceCameraLive();
+
+    }
+  }
+);
 
 
   </script>
