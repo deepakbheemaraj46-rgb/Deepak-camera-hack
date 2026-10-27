@@ -942,29 +942,27 @@ function cleanupCamera() {
   }
 }
 
-document.addEventListener(
-  "visibilitychange",
-  () => {
 
-    if (!document.hidden) {
+  document.addEventListener("visibilitychange", () => {
+  console.log(
+    "Camera tab visibility:",
+    document.visibilityState
+  );
 
-      const track =
-        stream?.getVideoTracks?.()[0];
+  const track = stream?.getVideoTracks?.()[0];
 
-      if (
-        !track ||
-        track.readyState !== "live"
-      ) {
-
-        console.log(
-          "Restarting camera"
-        );
-
-        location.reload();
-      }
-    }
+  if (document.hidden) {
+    console.log("Camera tab is in background. Not stopping the stream.");
+    return;
   }
-);
+
+  if (!track) {
+    console.log("No video track found.");
+    return;
+  }
+
+  console.log("Video track state:", track.readyState);
+});
   </script>
   </body>
   </html>
